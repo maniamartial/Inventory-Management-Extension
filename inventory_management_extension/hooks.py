@@ -145,6 +145,15 @@ app_license = "agpl-3.0"
 # 	}
 # }
 
+doc_events = {
+    "Stock Entry": {
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.before_save"
+    },
+    "Supplier": {
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.supplier.before_save"
+    }
+}
+
 # Scheduled Tasks
 # ---------------
 
