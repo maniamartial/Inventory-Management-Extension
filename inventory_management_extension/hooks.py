@@ -151,7 +151,10 @@ doc_events = {
     },
     "Supplier": {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.supplier.before_save"
-    }
+    },
+    "Purchase Receipt": {
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save"
+    },
 }
 
 # Scheduled Tasks
