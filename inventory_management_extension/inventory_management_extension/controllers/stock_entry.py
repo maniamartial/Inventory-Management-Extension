@@ -19,6 +19,7 @@ def generate_ean13():
     check_digit = calculate_ean13_check_digit(ean12)
     return ean12 + str(check_digit)
 
+
 def before_save(doc, method):
     if doc.stock_entry_type != "Manufacture":
         return
@@ -27,10 +28,10 @@ def before_save(doc, method):
         if not item.is_finished_item:
             continue
 
-        if not item.batch_no:
+        # if not item.batch_no:
             
-            batch_no = generate_batch_no(item.item_code)
-            item.batch_no = create_batch(batch_no, item.item_code).batch_id
+        #     batch_no = generate_batch_no(item.item_code)
+        #     item.batch_no = create_batch(batch_no, item.item_code).batch_id
 
         if not item.serial_no:
             item.serial_no = generate_ean13()
@@ -53,6 +54,7 @@ def generate_batch_no(item_code):
     new_batch_no = latest_batch(batch_prefix)
     
     return new_batch_no
+
 
 def latest_batch(batch_prefix):
     latest_batch = frappe.db.sql(
