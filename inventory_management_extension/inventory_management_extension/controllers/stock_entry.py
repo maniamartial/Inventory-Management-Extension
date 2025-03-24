@@ -21,20 +21,47 @@ def generate_ean13():
 
 
 def before_save(doc, method):
-    if doc.stock_entry_type != "Manufacture":
-        return
+    if doc.stock_entry_type == "Manufacture" or doc.stock_entry_type == "Material Receipt":
+    
 
-    for item in doc.items:
-        if not item.is_finished_item:
-            continue
+        for item in doc.items:
+            if not item.is_finished_item and doc.stock_entry_type == "Manufacture":
+                continue
 
-        # if not item.batch_no:
-            
-        #     batch_no = generate_batch_no(item.item_code)
-        #     item.batch_no = create_batch(batch_no, item.item_code).batch_id
+            if not item.custom_transaction_barcode:
+                item.custom_transaction_barcode=generate_ean13()
+                update_barcode_on_item(item.item_code, item.custom_transaction_barcode)
+                
 
-        if not item.serial_no:
-            item.serial_no = generate_ean13()
+        # if not item.serial_no:
+        #     item.serial_no = generate_ean13()
+def update_barcode_on_item(item_code, barcode):
+    item_doc = frappe.get_doc("Item", item_code)
+    item_doc.append("barcodes", {
+        "barcode": barcode
+    })
+    item_doc.save()
+    
+def on_submit(doc, method):
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt"]:
+        for item in doc.items:
+            if item.custom_transaction_barcode:
+                update_serial_and_batch(doc, item)
+                
+def update_serial_and_batch(doc, item):
+    entry = frappe.get_value(
+        "Serial and Batch Bundle",
+        {"voucher_no": doc.name, "voucher_type": doc.doctype, "item_code": item.item_code},
+        "name"
+    )
+    if entry:
+        bundle_doc = frappe.get_doc("Serial and Batch Bundle", entry)
+
+        # Update the custom_barcode field in the entries child table
+        for row in bundle_doc.entries:
+            row.custom_barcode = item.custom_transaction_barcode
+
+        bundle_doc.save(ignore_permissions=True)
 
 
 def generate_batch_no(item_code):

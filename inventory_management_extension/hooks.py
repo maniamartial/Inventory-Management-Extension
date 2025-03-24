@@ -73,6 +73,20 @@ app_license = "agpl-3.0"
 # Jinja
 # ----------
 
+fixtures= [
+    {
+        "doctype":"Custom Fields",
+        "filters": [
+            [
+                "name",
+                "in",   
+                ("Stock Entry-custom_transaction_barcode",
+                 "Serial and Batch Entry-custom_barcode")
+            ]
+        ]
+    }
+]
+
 # add methods and filters to jinja environment
 # jinja = {
 # 	"methods": "inventory_management_extension.utils.jinja_methods",
@@ -147,7 +161,8 @@ app_license = "agpl-3.0"
 
 doc_events = {
     "Stock Entry": {
-        "before_save": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.before_save"
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.before_save",
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.on_submit"
     },
     "Supplier": {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.supplier.before_save"
