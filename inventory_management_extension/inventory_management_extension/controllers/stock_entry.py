@@ -23,18 +23,18 @@ def generate_ean13():
 def before_save(doc, method):
     if doc.stock_entry_type == "Manufacture" or doc.stock_entry_type == "Material Receipt":
     
-
         for item in doc.items:
+            if not valiadte_item_has_batch(item.item_code):
+                continue
             if not item.is_finished_item and doc.stock_entry_type == "Manufacture":
                 continue
 
             if not item.custom_transaction_barcode:
                 item.custom_transaction_barcode=generate_ean13()
                 update_barcode_on_item(item.item_code, item.custom_transaction_barcode)
+    generate_batch_no(doc)
                 
 
-        # if not item.serial_no:
-        #     item.serial_no = generate_ean13()
 def update_barcode_on_item(item_code, barcode):
     item_doc = frappe.get_doc("Item", item_code)
     item_doc.append("barcodes", {
@@ -64,23 +64,23 @@ def update_serial_and_batch(doc, item):
         bundle_doc.save(ignore_permissions=True)
 
 
-def generate_batch_no(item_code):
-    item_doc = frappe.get_doc("Item", item_code)
-    suppliers = item_doc.get("supplier_items", [])
+# def generate_batch_no(item_code):
+#     item_doc = frappe.get_doc("Item", item_code)
+#     suppliers = item_doc.get("supplier_items", [])
 
-    cert_abbreviations = []
+#     cert_abbreviations = []
 
-    for supplier in suppliers:
-        supplier_doc = frappe.get_doc("Supplier", supplier.supplier)
-        for cert in supplier_doc.get("custom_certifications", []):
-            cert_abbreviations.append(cert.abbr)
+#     for supplier in suppliers:
+#         supplier_doc = frappe.get_doc("Supplier", supplier.supplier)
+#         for cert in supplier_doc.get("custom_certifications", []):
+#             cert_abbreviations.append(cert.abbr)
 
-    cert_abbreviation = "".join(cert_abbreviations) if cert_abbreviations else "XXX"
+#     cert_abbreviation = "".join(cert_abbreviations) if cert_abbreviations else "XXX"
 
-    batch_prefix = f"{item_doc.custom_code}{cert_abbreviation}-{item_doc.custom_grade}-"
-    new_batch_no = latest_batch(batch_prefix)
+#     batch_prefix = f"{item_doc.custom_code}{cert_abbreviation}-{item_doc.custom_grade}-"
+#     new_batch_no = latest_batch(batch_prefix)
     
-    return new_batch_no
+#     return new_batch_no
 
 
 def latest_batch(batch_prefix):
@@ -121,3 +121,45 @@ def generate_code128():
     filename = barcode_instance.save('code128_barcode')
     
     return random_number, filename
+
+def generate_batch_no(doc):
+    for item in doc.items:
+        if frappe.get_doc("Item", item.item_code).has_batch_no == 1:
+            if item.batch_no: 
+                continue
+            item.use_serial_batch_fields = 1
+            if doc.doctype=="Stock Entry" and doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
+                continue
+            
+            # Get the last batch created (regardless of item)
+            last_batch = frappe.db.get_value(
+                "Batch", 
+                filters={},
+                fieldname="batch_id", 
+                order_by="creation DESC"
+            )
+        
+            if last_batch and last_batch.isdigit():
+                next_number = int(last_batch) + 1
+            else:
+                next_number = 1000
+        
+            new_batch_id = f"{next_number}"
+        
+            batch = frappe.get_doc({
+                "doctype": "Batch",
+                "batch_id": new_batch_id,
+                "item": item.item_code,
+                "expiry_date": item.get("expiry_date")
+            })
+            batch.insert(ignore_permissions=True)
+        
+            item.batch_no = new_batch_id
+            
+
+            
+def valiadte_item_has_batch(item_code):
+    item_doc = frappe.get_doc("Item", item_code)
+    if item_doc.has_batch_no == 1:
+        return True
+    return False

@@ -81,7 +81,9 @@ fixtures= [
                 "name",
                 "in",   
                 ("Stock Entry-custom_transaction_barcode",
-                 "Serial and Batch Entry-custom_barcode")
+                 "Serial and Batch Entry-custom_barcode",
+                 "Purchase Receipt-custom_transaction_barcode",
+                 )
             ]
         ]
     }
@@ -168,7 +170,8 @@ doc_events = {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.supplier.before_save"
     },
     "Purchase Receipt": {
-        "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save"
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save",
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_submit"
     },
 }
 
