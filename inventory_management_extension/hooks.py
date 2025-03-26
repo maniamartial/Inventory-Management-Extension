@@ -75,7 +75,7 @@ app_license = "agpl-3.0"
 
 fixtures= [
     {
-        "doctype":"Custom Fields",
+        "doctype":"Custom Field",
         "filters": [
             [
                 "name",
