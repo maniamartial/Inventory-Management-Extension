@@ -80,9 +80,12 @@ fixtures= [
             [
                 "name",
                 "in",   
-                ("Stock Entry-custom_transaction_barcode",
+                ("Stock Entry Detail-custom_transaction_barcode",
                  "Serial and Batch Entry-custom_barcode",
-                 "Purchase Receipt-custom_transaction_barcode",
+                 "Purchase Receipt-custom_transaction_barcode"
+                 "Purchase Receipt Item-custom_column_break_tgzu6",
+                 "Purchase Receipt Item-custom_transaction_barcode",
+                 "Stock Entry Detail-custom_column_break_8o5fo",
                  )
             ]
         ]
