@@ -43,7 +43,7 @@ app_license = "agpl-3.0"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Delivery Note" : "public/js/delivery_note.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -83,9 +83,11 @@ fixtures= [
                 ("Stock Entry Detail-custom_transaction_barcode",
                  "Serial and Batch Entry-custom_barcode",
                  "Purchase Receipt-custom_transaction_barcode"
-                 "Purchase Receipt Item-custom_column_break_tgzu6",
+                 "Purchase Receipt Item-custom_column_break_ysrh2",
                  "Purchase Receipt Item-custom_transaction_barcode",
                  "Stock Entry Detail-custom_column_break_8o5fo",
+                 "Sales Invoice-custom_section_break_wgdnz",
+                 "Sales Invoice-custom_batch_barcode",
                  )
             ]
         ]
@@ -176,6 +178,9 @@ doc_events = {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save",
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_submit"
     },
+    "Delivery Note":{
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
+    }
 }
 
 # Scheduled Tasks

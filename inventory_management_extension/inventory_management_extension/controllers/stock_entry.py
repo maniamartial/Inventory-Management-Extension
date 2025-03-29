@@ -2,6 +2,7 @@ import frappe
 import random
 import barcode
 from barcode.writer import ImageWriter
+from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker
 
 def calculate_ean13_check_digit(ean12):
     """
@@ -46,6 +47,8 @@ def on_submit(doc, method):
     if doc.stock_entry_type in ["Manufacture", "Material Receipt"]:
         for item in doc.items:
             if item.custom_transaction_barcode:
+                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty)
+
                 update_serial_and_batch(doc, item)
                 
 def update_serial_and_batch(doc, item):
@@ -62,25 +65,6 @@ def update_serial_and_batch(doc, item):
             row.custom_barcode = item.custom_transaction_barcode
 
         bundle_doc.save(ignore_permissions=True)
-
-
-# def generate_batch_no(item_code):
-#     item_doc = frappe.get_doc("Item", item_code)
-#     suppliers = item_doc.get("supplier_items", [])
-
-#     cert_abbreviations = []
-
-#     for supplier in suppliers:
-#         supplier_doc = frappe.get_doc("Supplier", supplier.supplier)
-#         for cert in supplier_doc.get("custom_certifications", []):
-#             cert_abbreviations.append(cert.abbr)
-
-#     cert_abbreviation = "".join(cert_abbreviations) if cert_abbreviations else "XXX"
-
-#     batch_prefix = f"{item_doc.custom_code}{cert_abbreviation}-{item_doc.custom_grade}-"
-#     new_batch_no = latest_batch(batch_prefix)
-    
-#     return new_batch_no
 
 
 def latest_batch(batch_prefix):
