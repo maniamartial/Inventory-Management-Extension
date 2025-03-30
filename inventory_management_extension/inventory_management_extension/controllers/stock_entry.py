@@ -43,6 +43,7 @@ def update_barcode_on_item(item_code, barcode):
     })
     item_doc.save()
     
+
 def on_submit(doc, method):
     if doc.stock_entry_type in ["Manufacture", "Material Receipt"]:
         for item in doc.items:
@@ -50,6 +51,7 @@ def on_submit(doc, method):
                 create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty)
 
                 update_serial_and_batch(doc, item)
+                
                 
 def update_serial_and_batch(doc, item):
     entry = frappe.get_value(

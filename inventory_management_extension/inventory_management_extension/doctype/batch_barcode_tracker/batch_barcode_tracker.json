@@ -13,8 +13,9 @@
   "sold",
   "column_break_efor",
   "posting_date",
+  "amended_from",
   "batch",
-  "amended_from"
+  "warehouse"
  ],
  "fields": [
   {
@@ -44,13 +45,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "batch",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Batch",
-   "reqd": 1
-  },
-  {
    "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -74,13 +68,25 @@
    "fieldname": "sold",
    "fieldtype": "Check",
    "label": "Sold"
+  },
+  {
+   "fieldname": "batch",
+   "fieldtype": "Link",
+   "label": "Batch",
+   "options": "Batch"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-03-27 22:01:10.687074",
+ "modified": "2025-03-29 10:53:53.132676",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker",
@@ -101,7 +107,7 @@
    "write": 1
   }
  ],
- "search_fields": "batch, qty",
+ "search_fields": "batch,qty",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

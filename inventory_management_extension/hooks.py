@@ -43,7 +43,8 @@ app_license = "agpl-3.0"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Delivery Note" : "public/js/delivery_note.js"}
+doctype_js = {"Delivery Note" : "public/js/delivery_note.js",
+              "Pick List" : "public/js/pack_list.js",}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}

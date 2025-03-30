@@ -1,0 +1,114 @@
+frappe.ui.form.on('Pick List', {
+    refresh: function(frm) {
+        frm.fields_dict["custom_items"].grid.get_field("batch_no").get_query = function(doc, cdt, cdn) {
+            let row = locals[cdt][cdn];
+            if (!row.item_code || !row.warehouse) return;
+            return {
+                query: "erpnext.controllers.queries.get_batch_no",
+                filters: {
+                    item_code: row.item_code,
+                    warehouse: row.warehouse
+                }
+            };
+        };
+
+    },
+    onload: function(frm) {
+        frm.set_query("barcode", "custom_items", (frm, cdt, cdn) => {
+			const row = locals[cdt][cdn];
+			return {
+				filters: {
+					"item_code": row.item_code,
+                    "batch": row.batch_no || undefined,
+                    "sold":0,
+				},
+			};
+		});
+    },
+
+  
+        before_save: function(frm) {
+            let pick_list_extension = frm.doc.custom_items || []; // Pick List Extension
+    
+            // Get previous custom_items state (if available)
+            if (frm.__last_custom_items_state) {
+                let previous_state = JSON.stringify(frm.__last_custom_items_state);
+                let current_state = JSON.stringify(pick_list_extension);
+    
+                // If no changes, exit early
+                if (previous_state === current_state) {
+                    console.log("No changes detected in custom_items. Skipping update.");
+                    return;
+                }
+            }
+    
+            frm.__last_custom_items_state = JSON.parse(JSON.stringify(pick_list_extension));
+    
+            let grouped_items = {};
+    
+            pick_list_extension.forEach(row => {
+                let key = row.item_code + "-" + (row.batch_no || "NoBatch");
+                if (!grouped_items[key]) {
+                    grouped_items[key] = {
+                        item_code: row.item_code,
+                        batch_no: row.batch_no || "NoBatch",
+                        warehouse: row.warehouse,
+                        qty: 0,
+                    };
+                }
+                grouped_items[key].qty += row.qty;
+            });
+    
+            frm.clear_table("locations");
+            Object.values(grouped_items).forEach(data => {
+                let new_row = frm.add_child("locations");
+                new_row.item_code = data.item_code;
+                new_row.use_serial_batch_fields = 1;
+                new_row.batch_no = data.batch_no;
+                new_row.warehouse = data.warehouse;
+                new_row.qty = data.qty;
+                new_row.stock_qty = data.qty;
+                new_row.picked_qty = data.qty;
+            });
+    
+            frm.refresh_field("locations"); 
+        }
+
+
+});
+
+frappe.ui.form.on('Pick List Extension', {
+    barcode: function(frm, cdt, cdn) {
+        let child = locals[cdt][cdn];
+        frappe.call({
+            method: 'frappe.client.get_value',
+            args: {
+                doctype: 'Batch Barcode Tracker',
+                filters: { barcode: child.barcode },
+                fieldname: ['qty']
+            },
+            callback: function(response) {
+                if (response.message) {
+                    let qty = response.message.qty;
+                    frappe.model.set_value(cdt, cdn, 'qty', qty);
+                } else {
+                    frappe.msgprint(__('No such barcode found'));
+                }
+            }
+        });
+    },
+    package_weight: function(frm, cdt, cdn) {
+        update_gross_weight(frm, cdt, cdn);
+    },
+});
+
+function update_gross_weight(frm, cdt, cdn) {
+    let child_table = frm.doc.custom_items || [];
+    
+    child_table.forEach(row => {
+        if (row.packaging_item && row.packaging_itemuom===row.stock_uom) {
+            let gross_weight = row.qty + row.package_weight;
+            frappe.model.set_value(cdt, cdn, 'gross_weight', gross_weight);
+        }
+    });
+}

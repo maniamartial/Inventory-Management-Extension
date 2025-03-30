@@ -1,0 +1,83 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-03-29 10:19:46.263959",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "batch_no",
+  "batch_barcode",
+  "item",
+  "net_weight",
+  "column_break_kyyr",
+  "packaging_material",
+  "gross_weight"
+ ],
+ "fields": [
+  {
+   "fieldname": "batch_barcode",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Batch Barcode",
+   "options": "Batch Barcode Tracker",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "batch_barcode.qty",
+   "fetch_if_empty": 1,
+   "fieldname": "net_weight",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Net Weight",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_kyyr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "packaging_material",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Packaging Material"
+  },
+  {
+   "fieldname": "gross_weight",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Gross Weight"
+  },
+  {
+   "fetch_from": "batch_barcode.item_code",
+   "fetch_if_empty": 1,
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "batch_no",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Batch No",
+   "options": "Batch",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-03-29 10:32:15.769306",
+ "modified_by": "Administrator",
+ "module": "Inventory Management Extension",
+ "name": "Batch Barcode Packing List",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

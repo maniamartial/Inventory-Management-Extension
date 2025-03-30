@@ -11,7 +11,6 @@ def create_barcode_tracker(item_code, barcode, batch, qty):
     """
     # Check if the barcode already exists
     if frappe.db.exists("Batch Barcode Tracker", {"barcode": barcode}):
-        # If it exists, update the existing record
         frappe.throw("Barcode already exists.")
         
     # Create a new barcode tracker record
@@ -21,7 +20,6 @@ def create_barcode_tracker(item_code, barcode, batch, qty):
         "barcode": barcode,
         "batch": batch,
         "qty": qty,
-        
     })
     barcode_tracker.insert()
     barcode_tracker.submit()
@@ -34,10 +32,8 @@ def get_total_qty_from_barcodes():
         return 0  
 
     try:
-        # Parse the JSON string into Python objects
         barcode_list = frappe.parse_json(barcode_data)
 
-        # Extract barcodes from the list of dictionaries
         barcodes = [entry.get("barcodes") for entry in barcode_list if entry.get("barcodes")]
         
         if not barcodes:
