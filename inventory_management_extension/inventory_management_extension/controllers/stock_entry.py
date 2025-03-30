@@ -109,6 +109,8 @@ def generate_code128():
     return random_number, filename
 
 def generate_batch_no(doc):
+    item_batch_map = {}
+    
     for item in doc.items:
         if frappe.get_doc("Item", item.item_code).has_batch_no == 1:
             if item.batch_no: 
@@ -117,7 +119,10 @@ def generate_batch_no(doc):
             if doc.doctype=="Stock Entry" and doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
                 continue
             
-            # Get the last batch created (regardless of item)
+            if item.item_code in item_batch_map:
+                item.batch_no = item_batch_map[item.item_code]
+                continue
+            
             last_batch = frappe.db.get_value(
                 "Batch", 
                 filters={},
@@ -141,6 +146,7 @@ def generate_batch_no(doc):
             batch.insert(ignore_permissions=True)
         
             item.batch_no = new_batch_id
+            item_batch_map[item.item_code] = new_batch_id
             
 
             
