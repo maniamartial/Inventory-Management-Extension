@@ -87,10 +87,11 @@ fixtures= [
                  "Purchase Receipt Item-custom_column_break_ysrh2",
                  "Purchase Receipt Item-custom_transaction_barcode",
                  "Stock Entry Detail-custom_column_break_8o5fo",
-                 "Delivery Note-custom_section_break_jvdmw",
-                 "Delivery Note-custom_batch_barcode",
                  "Sales Invoice-custom_section_break_wgdnz",
                  "Sales Invoice-custom_batch_barcode",
+                 "Pick List-custom_section_break_f4l7m",
+                 "Pick List-custom_items",
+                 
                  )
             ]
         ]
