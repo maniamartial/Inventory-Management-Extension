@@ -44,7 +44,9 @@ app_license = "agpl-3.0"
 
 # include js in doctype views
 doctype_js = {"Delivery Note" : "public/js/delivery_note.js",
-              "Pick List" : "public/js/pack_list.js",}
+              "Pick List" : "public/js/pack_list.js",
+              "Purchase Receipt" : "public/js/purchase_receipt.js",
+              "Stock Entry" : "public/js/stock_entry.js",}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -91,7 +93,10 @@ fixtures= [
                  "Sales Invoice-custom_batch_barcode",
                  "Pick List-custom_section_break_f4l7m",
                  "Pick List-custom_items",
-                 
+                 "Purchase Receipt Item-custom_split_no",
+                 "Purchase Receipt-custom_split_items",
+                 "Stock Entry Detail-custom_split_no",
+                 "Stock Entry-custom_split_items",
                  )
             ]
         ]

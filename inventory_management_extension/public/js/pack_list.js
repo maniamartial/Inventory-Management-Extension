@@ -106,9 +106,31 @@ function update_gross_weight(frm, cdt, cdn) {
     let child_table = frm.doc.custom_items || [];
     
     child_table.forEach(row => {
-        if (row.packaging_item && row.packaging_itemuom===row.stock_uom) {
+        if (!row.packaging_item) return;
+
+        if (row.packaging_itemuom === row.stock_uom) {
+            // Direct summation if UOMs are the same
             let gross_weight = row.qty + row.package_weight;
             frappe.model.set_value(cdt, cdn, 'gross_weight', gross_weight);
+        } else {
+            // Call the custom server script
+            frappe.call({
+                method: "inventory_management_extension.inventory_management_extension.utils.get_conversion_factor",
+                args: {
+                    item_code: row.packaging_item,
+                    uom: row.packaging_itemuom
+                },
+                callback: function(r) {
+                    if (r.message && r.message.conversion_factor) {
+                        let conversion_factor = r.message.conversion_factor;
+                        let converted_qty = row.qty * conversion_factor; // Convert quantity
+                        let gross_weight = converted_qty + row.package_weight;
+                        frappe.model.set_value(cdt, cdn, 'gross_weight', gross_weight);
+                    } else {
+                        frappe.msgprint(`Conversion factor not found for ${row.packaging_itemuom}`);
+                    }
+                }
+            });
         }
     });
 }

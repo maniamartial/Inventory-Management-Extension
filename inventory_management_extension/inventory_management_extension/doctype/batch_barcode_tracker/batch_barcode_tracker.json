@@ -11,6 +11,7 @@
   "item_code",
   "qty",
   "sold",
+  "barcode_image",
   "column_break_efor",
   "posting_date",
   "amended_from",
@@ -35,7 +36,6 @@
   {
    "fieldname": "barcode",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Barcode",
    "reqd": 1,
    "unique": 1
@@ -61,6 +61,7 @@
   {
    "fieldname": "qty",
    "fieldtype": "Float",
+   "in_list_view": 1,
    "label": "Qty"
   },
   {
@@ -72,21 +73,28 @@
   {
    "fieldname": "batch",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Batch",
-   "options": "Batch"
+   "options": "Batch",
+   "reqd": 1
   },
   {
    "fieldname": "warehouse",
    "fieldtype": "Link",
    "label": "Warehouse",
    "options": "Warehouse"
+  },
+  {
+   "fieldname": "barcode_image",
+   "fieldtype": "Attach Image",
+   "label": "Barcode Image"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-03-29 10:53:53.132676",
+ "modified": "2025-04-01 20:55:30.111585",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker",

@@ -49,7 +49,6 @@ def on_submit(doc, method):
         for item in doc.items:
             if item.custom_transaction_barcode:
                 create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty)
-
                 update_serial_and_batch(doc, item)
                 
                 
@@ -148,7 +147,6 @@ def generate_batch_no(doc):
             item.batch_no = new_batch_id
             item_batch_map[item.item_code] = new_batch_id
             
-
             
 def valiadte_item_has_batch(item_code):
     item_doc = frappe.get_doc("Item", item_code)
