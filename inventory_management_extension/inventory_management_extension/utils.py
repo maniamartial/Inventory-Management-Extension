@@ -4,9 +4,14 @@ from frappe.utils import flt
 from frappe import _
 from frappe.model.document import Document
 import json
-from frappe.utils import cstr
 from barcode import Code128
 from barcode.writer import ImageWriter
+import frappe
+from frappe.utils.file_manager import save_file
+import os
+import re
+from frappe.utils import flt
+
 
 def create_barcode_tracker(item_code, barcode, batch, qty):
     """
@@ -65,16 +70,8 @@ def get_total_qty_from_barcodes():
         
 
 def update_batch_tracker(doc):
-    selected_barcodes = [entry.barcodes for entry in doc.custom_batch_barcode]
-    for m in selected_barcodes:
-        frappe.db.set_value("Batch Barcode Tracker", m, "sold", 1)
-    
-    
-# Copyright (c) 2024, Your Name and contributors
-# License: MIT. See LICENSE
+    get_pick_list(doc)
 
-import frappe
-from frappe.utils import flt
 
 @frappe.whitelist()
 def split_purchase_receipt_items():
@@ -159,13 +156,6 @@ def split_stock_entry_items():
     
     return pr_doc.name
 
-import os
-import frappe
-from barcode import Code128
-from barcode.writer import ImageWriter
-from frappe.utils.file_manager import save_file
-import os
-import re
 
 def sanitize_filename(filename):
     """
@@ -218,3 +208,19 @@ def get_conversion_factor():
         return {"conversion_factor": conversion_factor}
     else:
         return {"error": f"Conversion factor not found for {uom} in {item_code}"}
+    
+def get_pick_list(doc):
+    pick_list_item = next((item.pick_list_item for item in doc.items if item.pick_list_item), None)
+    
+    if not pick_list_item:
+        return
+    
+    parent_pick_list = frappe.get_value("Pick List Item", pick_list_item, "parent")
+    
+    if not parent_pick_list:
+        return
+    
+    pick_list_doc = frappe.get_doc("Pick List", parent_pick_list)
+    
+    for item in pick_list_doc.custom_items:
+        frappe.db.set_value("Batch Barcode Tracker", item.barcode, "sold", 1)

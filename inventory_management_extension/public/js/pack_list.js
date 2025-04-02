@@ -109,11 +109,9 @@ function update_gross_weight(frm, cdt, cdn) {
         if (!row.packaging_item) return;
 
         if (row.packaging_itemuom === row.stock_uom) {
-            // Direct summation if UOMs are the same
             let gross_weight = row.qty + row.package_weight;
             frappe.model.set_value(cdt, cdn, 'gross_weight', gross_weight);
         } else {
-            // Call the custom server script
             frappe.call({
                 method: "inventory_management_extension.inventory_management_extension.utils.get_conversion_factor",
                 args: {
