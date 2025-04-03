@@ -114,7 +114,7 @@ def split_stock_entry_items():
     pr_doc = frappe.get_doc("Stock Entry", stock_entry)
     
     items_to_process = [item for item in pr_doc.items]
-    
+
     for item in items_to_process:
         split_no = item.custom_split_no or 1  
         if split_no > 1 and item.qty:
@@ -124,6 +124,7 @@ def split_stock_entry_items():
                     'item_code': item.item_code,
                     'qty': item.qty,
                     'uom': item.uom,
+                    "is_finished_item": item.is_finished_item,
                     'stock_uom': item.stock_uom,
                     'conversion_factor': item.conversion_factor,
                     'rate': item.basic_rate,
