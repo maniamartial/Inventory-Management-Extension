@@ -15,6 +15,6 @@ def before_save(doc, method=None):
 def on_submit(doc, method=None):
     for item in doc.items:
             if item.custom_transaction_barcode:
-                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty)
+                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty, item.warehouse)
                 update_serial_and_batch(doc, item)
     

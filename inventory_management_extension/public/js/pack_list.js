@@ -28,14 +28,12 @@ frappe.ui.form.on('Pick List', {
 
   
         before_save: function(frm) {
-            let pick_list_extension = frm.doc.custom_items || []; // Pick List Extension
+            let pick_list_extension = frm.doc.custom_items || [];
     
-            // Get previous custom_items state (if available)
             if (frm.__last_custom_items_state) {
                 let previous_state = JSON.stringify(frm.__last_custom_items_state);
                 let current_state = JSON.stringify(pick_list_extension);
     
-                // If no changes, exit early
                 if (previous_state === current_state) {
                     console.log("No changes detected in custom_items. Skipping update.");
                     return;
@@ -72,8 +70,39 @@ frappe.ui.form.on('Pick List', {
             });
     
             frm.refresh_field("locations"); 
-        }
-
+        },
+      
+        custom_scan_transactional_barcode: function(frm) {
+                const barcode = frm.doc.custom_scan_transactional_barcode;
+                if (!barcode) return;
+        
+                frappe.call({
+                    method: 'frappe.client.get',
+                    args: {
+                        doctype: 'Batch Barcode Tracker',
+                        name: barcode
+                    },
+                    callback: function(r) {
+                        if (r.message) {
+                            const data = r.message;
+        
+                            const row = frm.add_child('custom_items');
+                            row.item_code = data.item_code;
+                            row.batch_no = data.batch;
+                            row.barcode = data.name;
+                            row.qty = data.qty;
+                            row.uom = data.uom || 'Nos';
+                            row.warehouse = data.warehouse;
+        
+                            frm.refresh_field('custom_items');
+                            frm.set_value('scan_barcode', ''); 
+                        } else {
+                            frappe.msgprint(`No record found for barcode: ${barcode}`);
+                        }
+                    }
+                });
+            }
+       
 
 });
 

@@ -52,7 +52,7 @@ def on_submit(doc, method):
             is_lot=True
         for item in doc.items:
             if item.custom_transaction_barcode:
-                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty, is_lot=is_lot)
+                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty,item.t_warehouse, is_lot=is_lot)
                 update_serial_and_batch(doc, item)
                 
                 
