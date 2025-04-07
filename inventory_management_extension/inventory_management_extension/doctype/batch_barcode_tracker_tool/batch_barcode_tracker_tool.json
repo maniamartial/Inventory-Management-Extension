@@ -1,0 +1,76 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{YY}-{####}",
+ "beta": 1,
+ "creation": "2025-04-07 20:32:03.975697",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_o6es",
+  "posting_date",
+  "column_break_efor",
+  "qty",
+  "section_break_nnaa",
+  "batch_table"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_o6es",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Quantity",
+   "non_negative": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_efor",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Manufactured Date"
+  },
+  {
+   "fieldname": "section_break_nnaa",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "batch_table",
+   "fieldtype": "Table",
+   "label": "Batch Table",
+   "options": "Batch Barcode Form"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-04-07 20:39:15.871897",
+ "modified_by": "Administrator",
+ "module": "Inventory Management Extension",
+ "name": "Batch Barcode Tracker Tool",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

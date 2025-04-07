@@ -11,7 +11,7 @@ import re
 from frappe.utils import flt
 
 
-def create_barcode_tracker(item_code, barcode, batch, qty):
+def create_barcode_tracker(item_code, barcode, batch, qty, is_lot=None):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
     """
@@ -26,7 +26,9 @@ def create_barcode_tracker(item_code, barcode, batch, qty):
         "barcode": barcode,
         "batch": batch,
         "qty": qty,
-        "barcode_image": image, 
+        "barcode_image": image,
+        "is_lot": is_lot,
+        "lot_no": batch if is_lot else None,
     })
     barcode_tracker.insert(ignore_permissions=True) 
     barcode_tracker.submit() 
@@ -139,7 +141,7 @@ def split_stock_entry_items():
                     'custom_split_no': 1 
                 }
                 new_items.append(new_item)
-            
+                
             pr_doc.remove(item)
             for new_item in new_items:
                 pr_doc.append('items', new_item)

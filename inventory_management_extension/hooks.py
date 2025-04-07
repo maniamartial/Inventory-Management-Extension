@@ -97,6 +97,7 @@ fixtures= [
                  "Purchase Receipt-custom_split_items",
                  "Stock Entry Detail-custom_split_no",
                  "Stock Entry-custom_split_items",
+                 "Stock Entry-custom_create_lot",
                  )
             ]
         ]
