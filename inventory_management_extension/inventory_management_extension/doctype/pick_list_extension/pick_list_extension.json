@@ -34,6 +34,7 @@
   "weight_section",
   "packaging_item",
   "package_weight",
+  "cubic",
   "column_break_caab",
   "packaging_itemuom",
   "gross_weight",
@@ -283,12 +284,18 @@
    "fieldname": "gross_weight",
    "fieldtype": "Float",
    "label": "Gross Weight"
+  },
+  {
+   "fetch_from": "item_code.custom_cubic",
+   "fieldname": "cubic",
+   "fieldtype": "Float",
+   "label": "Cubic"
   }
  ],
  "grid_page_length": 50,
  "istable": 1,
  "links": [],
- "modified": "2025-03-29 16:47:04.254513",
+ "modified": "2025-04-14 20:27:00.886989",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Pick List Extension",

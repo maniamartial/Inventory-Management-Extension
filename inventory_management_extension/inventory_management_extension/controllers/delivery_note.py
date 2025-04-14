@@ -1,5 +1,5 @@
 import frappe
-from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker, update_batch_tracker, get_pick_list
+from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker, update_batch_tracker, get_pick_list, add_packing_weights_to_delivery_note
 
 def before_submit(doc, method=None):
     update_batch_tracker(doc)
@@ -18,6 +18,7 @@ def get_taxes_charges(doc):
 def before_save(doc, method=None):
     if doc.is_new():
         update_customer(doc)
+        add_packing_weights_to_delivery_note(doc)
     else:
         pick_list_doc = get_pick_list(doc)
         if pick_list_doc:

@@ -39,6 +39,7 @@ frappe.ui.form.on('Pick List', {
 
   
         before_save: function(frm) {
+            if(frm.is_new() || frm.doc.custom_update_items===1){
             let pick_list_extension = frm.doc.custom_items || [];
     
             if (frm.__last_custom_items_state) {
@@ -79,8 +80,9 @@ frappe.ui.form.on('Pick List', {
                 new_row.stock_qty = data.qty;
                 new_row.picked_qty = data.qty;
             });
-    
+            frm.doc.custom_update_items = 0;
             frm.refresh_field("locations"); 
+        }
         },
       
         custom_scan_transactional_barcode: function(frm) {
@@ -142,6 +144,12 @@ frappe.ui.form.on('Pick List Extension', {
     },
 });
 
+frappe.ui.form.on('Pick List Item', {
+    custom_packaging_item: function(frm, cdt, cdn) {
+        update_gross_weight_items(frm, cdt, cdn);
+    }
+});
+
 function update_gross_weight(frm, cdt, cdn) {
     let child_table = frm.doc.custom_items || [];
     
@@ -164,6 +172,37 @@ function update_gross_weight(frm, cdt, cdn) {
                         let converted_qty = row.qty * conversion_factor; // Convert quantity
                         let gross_weight = converted_qty + row.package_weight;
                         frappe.model.set_value(cdt, cdn, 'gross_weight', gross_weight);
+                    } else {
+                        frappe.msgprint(`Conversion factor not found for ${row.packaging_itemuom}`);
+                    }
+                }
+            });
+        }
+    });
+}
+
+function update_gross_weight_items(frm, cdt, cdn) {
+    let child_table = frm.doc.locations || [];
+    
+    child_table.forEach(row => {
+        if (!row.custom_packaging_item) return;
+
+        if (row.custom_packaging_itemuom === row.stock_uom) {
+            let gross_weight = row.qty + row.custom_packing_weight;
+            frappe.model.set_value(cdt, cdn, 'custom_gross_weight', gross_weight);
+        } else {
+            frappe.call({
+                method: "inventory_management_extension.inventory_management_extension.utils.get_conversion_factor",
+                args: {
+                    item_code: row.custom_packaging_item,
+                    uom: row.custom_packaging_itemuom
+                },
+                callback: function(r) {
+                    if (r.message && r.message.conversion_factor) {
+                        let conversion_factor = r.message.conversion_factor;
+                        let converted_qty = row.stock_qty * conversion_factor; // Convert quantity
+                        let gross_weight = converted_qty + row.custom_packing_weight;
+                        frappe.model.set_value(cdt, cdn, 'custom_gross_weight', gross_weight);
                     } else {
                         frappe.msgprint(`Conversion factor not found for ${row.packaging_itemuom}`);
                     }

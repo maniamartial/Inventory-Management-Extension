@@ -98,6 +98,17 @@ fixtures= [
                  "Stock Entry Detail-custom_split_no",
                  "Stock Entry-custom_split_items",
                  "Stock Entry-custom_create_lot",
+                 "Pick List-custom_scan_transactional_barcode",
+                 "Item-custom_cubic",
+                 "Delivery Note Item-custom_gross_weight",
+                "Delivery Note Item-custom_packaging_itemuom",
+                 "Delivery Note Item-custom_column_break_smssg",
+                 "Delivery Note Item-custom_package_item",
+                 "Delivery Note Item-custom_packing_weight_details",
+                 "Delivery Note Item-custom_cubic",
+                 "Pick List Item-custom_cubic",
+                 "Pick List-custom_update_items"
+                 
                  )
             ]
         ]
