@@ -13,24 +13,27 @@ frappe.ui.form.on('Pick List', {
         };
 
     },
-    onload: function(frm) {
+    onload: function(frm, cdt, cdn) {
+        items = (frm.doc.custom_items || [])
+      
         frm.set_query("barcode", "custom_items", (frm, cdt, cdn) => {
             const row = locals[cdt][cdn];
-            // console.log("Here",frm.doc.custom_items)
-            //Get all selected barcodes except the one in the current row
-            // const selected_barcodes = (frm.doc.custom_items || [])
-            //     .filter(r => r.name !== cdn && r.barcode)
-            //     .map(r => r.barcode);
-            
+            const selected_barcodes = items
+                .filter(r => r.name !== cdn && r.barcode)
+                .map(r => r.barcode);
+
             return {
                 filters: {
                     "item_code": row.item_code,
                     "batch": row.batch_no || undefined,
                     "sold": 0,
-                    // "name": ["not in", selected_barcodes]  // Assuming 'name' is the Barcode docname
+                    "name": ["not in", selected_barcodes]
                 },
             };
         });
+        frm.refresh_field("custom_items");
+        frm.refresh();
+
     }
 ,    
 
