@@ -15,16 +15,24 @@ frappe.ui.form.on('Pick List', {
     },
     onload: function(frm) {
         frm.set_query("barcode", "custom_items", (frm, cdt, cdn) => {
-			const row = locals[cdt][cdn];
-			return {
-				filters: {
-					"item_code": row.item_code,
+            const row = locals[cdt][cdn];
+            // console.log("Here",frm.doc.custom_items)
+            //Get all selected barcodes except the one in the current row
+            // const selected_barcodes = (frm.doc.custom_items || [])
+            //     .filter(r => r.name !== cdn && r.barcode)
+            //     .map(r => r.barcode);
+            
+            return {
+                filters: {
+                    "item_code": row.item_code,
                     "batch": row.batch_no || undefined,
-                    "sold":0,
-				},
-			};
-		});
-    },
+                    "sold": 0,
+                    // "name": ["not in", selected_barcodes]  // Assuming 'name' is the Barcode docname
+                },
+            };
+        });
+    }
+,    
 
   
         before_save: function(frm) {

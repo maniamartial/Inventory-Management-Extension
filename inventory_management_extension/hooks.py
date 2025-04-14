@@ -190,6 +190,7 @@ doc_events = {
     },
     "Delivery Note":{
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save"
     }
 }
 

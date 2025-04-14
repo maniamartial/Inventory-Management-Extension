@@ -68,7 +68,6 @@ def get_total_qty_from_barcodes():
 def update_batch_tracker(doc):
     get_pick_list(doc)
 
-
 @frappe.whitelist()
 def split_purchase_receipt_items():
     """Split items in Purchase Receipt based on custom_split_no"""
@@ -214,3 +213,5 @@ def get_pick_list(doc):
     
     for item in pick_list_doc.custom_items:
         frappe.db.set_value("Batch Barcode Tracker", item.barcode, "sold", 1)
+        
+    return pick_list_doc
