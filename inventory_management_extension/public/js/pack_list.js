@@ -39,6 +39,10 @@ frappe.ui.form.on('Pick List', {
 
   
         before_save: function(frm) {
+            // if(frm.is_new()){
+            //     getSalesOrder(frm);
+
+            // }
             if(frm.is_new() || frm.doc.custom_update_items===1){
             let pick_list_extension = frm.doc.custom_items || [];
     
@@ -210,4 +214,16 @@ function update_gross_weight_items(frm, cdt, cdn) {
             });
         }
     });
+}
+
+function getSalesOrder(frm){
+    let sales_order = '';
+        for (let i = 0; i < frm.doc.custom_items.length; i++) {
+            let item = frm.doc.custom_items[i];
+            if (item.sales_order) {
+                sales_order= item.sales_order;
+            }
+        }
+        frm.doc.custom_sales_order =sales_order;
+        frm.refresh_field("custom_sales_order");
 }
