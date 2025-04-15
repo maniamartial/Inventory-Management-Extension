@@ -202,7 +202,10 @@ doc_events = {
     "Delivery Note":{
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
         "before_insert": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save"
-    }
+    },
+    "Pick List": {
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_submit"
+    },
 }
 
 # Scheduled Tasks
