@@ -107,7 +107,8 @@ fixtures= [
                  "Delivery Note Item-custom_packing_weight_details",
                  "Delivery Note Item-custom_cubic",
                  "Pick List Item-custom_cubic",
-                 "Pick List-custom_update_items"
+                 "Pick List-custom_update_items",
+                 "Pick List-custom_sales_order"
                  
                  )
             ]
