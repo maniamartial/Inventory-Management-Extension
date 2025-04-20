@@ -108,8 +108,11 @@ fixtures= [
                  "Delivery Note Item-custom_cubic",
                  "Pick List Item-custom_cubic",
                  "Pick List-custom_update_items",
-                 "Pick List-custom_sales_order"
-                 
+                 "Pick List-custom_sales_order",
+                 "Purchase Receipt Item-custom_print",
+                 "Purchase Receipt Item-custom_barcode_image",
+                 "Stock Entry Detail-custom_barcode_image",
+                 "Stock Entry Detail-custom_print",
                  )
             ]
         ]
