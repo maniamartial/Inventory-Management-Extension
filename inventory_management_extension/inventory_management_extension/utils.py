@@ -159,6 +159,7 @@ def sanitize_filename(filename):
     filename = filename.replace(" ", "_") 
     return filename
 
+@frappe.whitelist()
 def generate_image_for_barcode(barcode):
     """
     Generate a barcode image and save it in Frappe's file system.
