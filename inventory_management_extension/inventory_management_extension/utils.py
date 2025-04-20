@@ -11,11 +11,11 @@ import re
 from frappe.utils import flt
 
 
-def create_barcode_tracker(item_code, barcode, batch, qty,warehouse, is_lot=None):
+def create_barcode_tracker(item_code, barcode, batch, qty,warehouse,barcode_image, is_lot=None):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
     """
-    image = generate_image_for_barcode(barcode)  
+    image = barcode_image if barcode_image else generate_image_for_barcode(barcode)  
   
     if frappe.db.exists("Batch Barcode Tracker", {"barcode": barcode}):
         frappe.throw("Barcode already exists.")
