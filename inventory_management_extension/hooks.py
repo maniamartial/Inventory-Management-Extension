@@ -107,6 +107,14 @@ fixtures= [
                  "Delivery Note Item-custom_packing_weight_details",
                  "Delivery Note Item-custom_cubic",
                  "Pick List Item-custom_cubic",
+                 "Pick List Item-custom_pack",
+                 "Pick List Item-custom_packing_weight",
+                 "Pick List Item-custom_column_break_rihao",
+                 "Pick List Item-custom_gross_weight",
+                 "Pick List Item-custom_packaging_item",
+                 "Pick List Item-custom_packaging_itemuom",
+                 
+                 
                  "Pick List-custom_update_items",
                  "Pick List-custom_sales_order",
                  "Purchase Receipt Item-custom_print",
