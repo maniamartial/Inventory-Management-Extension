@@ -120,6 +120,14 @@ fixtures= [
                  "Purchase Receipt Item-custom_barcode_image",
                  "Stock Entry Detail-custom_barcode_image",
                  "Stock Entry Detail-custom_print",
+                 
+                 "Pick List Item-custom_barcode_no",
+                 "Pick List-custom_packaging_itemuom",
+                 "Pick List-custom_column_break_108bg",
+                 "Pick List-custom_cubic",
+                 "Pick List-custom_packing_weight",
+                 "Pick List-custom_packaging_item",
+                 "Pick List-custom_package"
                  )
             ]
         ]
