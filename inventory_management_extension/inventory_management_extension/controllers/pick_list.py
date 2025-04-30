@@ -35,3 +35,15 @@ def validate_qty(doc):
             )
         )
         
+def before_save(doc, method=None):
+    calculate_package_weight(doc)
+def calculate_package_weight(doc):
+    # total_weight = 0
+    for item in doc.locations:
+        item.custom_packaging_item = doc.custom_packaging_item
+        item.custom_packing_weight = doc.custom_packing_weight
+        item.custom_packaging_itemuom = doc.custom_packaging_itemuom
+        item.custom_cubic = doc.custom_cubic * item.custom_barcode_no
+        item.custom_gross_weight = (doc.custom_packing_weight * item.custom_barcode_no) + item.qty
+
+

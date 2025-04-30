@@ -59,7 +59,20 @@ frappe.ui.form.on('Pick List', {
             frm.__last_custom_items_state = JSON.parse(JSON.stringify(pick_list_extension));
     
             let grouped_items = {};
-    
+            let barcode_counts = {};
+
+            pick_list_extension.forEach(row => {
+                let key = row.item_code + "-" + (row.batch_no || "NoBatch");
+                
+                // Initialize the barcode count for this key if not exists
+                if (!barcode_counts[key]) {
+                    barcode_counts[key] = 0;
+                }
+                
+                // Each row in the pick_list_extension represents one barcode
+                barcode_counts[key]++;
+            });
+
             pick_list_extension.forEach(row => {
                 let key = row.item_code + "-" + (row.batch_no || "NoBatch");
                 if (!grouped_items[key]) {
@@ -68,9 +81,12 @@ frappe.ui.form.on('Pick List', {
                         batch_no: row.batch_no || "NoBatch",
                         warehouse: row.warehouse,
                         qty: 0,
+                        barcode_count: barcode_counts[key]
                     };
                 }
                 grouped_items[key].qty += row.qty;
+              
+                
             });
     
             frm.clear_table("locations");
@@ -83,6 +99,7 @@ frappe.ui.form.on('Pick List', {
                 new_row.qty = data.qty;
                 new_row.stock_qty = data.qty;
                 new_row.picked_qty = data.qty;
+                new_row.custom_barcode_no = data.barcode_count;
             });
             frm.doc.custom_update_items = 0;
             frm.refresh_field("locations"); 

@@ -114,7 +114,6 @@ fixtures= [
                  "Pick List Item-custom_packaging_item",
                  "Pick List Item-custom_packaging_itemuom",
                  
-                 
                  "Pick List-custom_update_items",
                  "Pick List-custom_sales_order",
                  "Purchase Receipt Item-custom_print",
@@ -216,7 +215,8 @@ doc_events = {
         "before_insert": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save"
     },
     "Pick List": {
-        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_submit"
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_submit",
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_save",
     },
 }
 
