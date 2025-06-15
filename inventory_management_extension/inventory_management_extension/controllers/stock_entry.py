@@ -22,18 +22,30 @@ def generate_ean13():
 
 
 def before_save(doc, method):
-    if doc.stock_entry_type == "Manufacture" or doc.stock_entry_type == "Material Receipt":
-    
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack"]:
         for item in doc.items:
+            # Skip if item doesn't need batch
             if not valiadte_item_has_batch(item.item_code):
                 continue
-            if not item.is_finished_item and doc.stock_entry_type == "Manufacture":
+
+            # Manufacture: only generate for finished item
+            if doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
                 continue
 
+            # Repack: only generate for items being added (target warehouse exists)
+            if doc.stock_entry_type == "Repack" and not item.t_warehouse:
+                continue
+
+            # Material Receipt: all items with batch requirement are valid
+
+            # Generate and set barcode if not already present
             if not item.custom_transaction_barcode:
-                item.custom_transaction_barcode=generate_ean13()
+                item.custom_transaction_barcode = generate_ean13()
                 update_barcode_on_item(item.item_code, item.custom_transaction_barcode)
-    generate_batch_no(doc)
+
+        # After assigning barcodes, generate batches
+        generate_batch_no(doc)
+
                 
 
 def update_barcode_on_item(item_code, barcode):
@@ -47,7 +59,7 @@ def update_barcode_on_item(item_code, barcode):
 def on_submit(doc, method):
     is_lot=False
     
-    if doc.stock_entry_type in ["Manufacture", "Material Receipt"]:
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack"]:
         if doc.stock_entry_type == "Manufacture" and doc.custom_create_lot ==1:
             is_lot=True
         for item in doc.items:

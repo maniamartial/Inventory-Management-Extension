@@ -219,10 +219,8 @@ def add_packing_weights_to_delivery_note(doc):
     for item in doc.items:
         pick_list_item = frappe.get_doc("Pick List Item",item.pick_list_item)
         if pick_list_item:
-            # item.custom_packing_weight_details = pick_list_item.custom_packing_weight_details
             item.custom_cubic = pick_list_item.custom_cubic
             item.custom_packaging_itemuom = pick_list_item.custom_packaging_itemuom
-            # item.custom_column_break_smssg = pick_list_item.custom_column_break_smssg
             item.custom_package_item = pick_list_item.custom_packaging_item
             item.custom_gross_weight = pick_list_item.custom_gross_weight
             item.custom_package_weight = pick_list_item.custom_packing_weight
