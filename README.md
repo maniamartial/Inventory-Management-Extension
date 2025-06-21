@@ -135,8 +135,6 @@ On **submission**, each target item line results in a record in **Batch Barcode 
 
 ----------
 
-## 📄 Summary of New/Extended Doctypes and Fields
-
 
 ## 📄 Summary of New/Extended Doctypes and Fields
 
