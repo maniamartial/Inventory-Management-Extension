@@ -41,7 +41,8 @@
     -   When you change the quantity, a transaction barcode is generated (if unsaved).
         
     -   You can **print the barcode** and physically attach it to the package.
-        
+        ![image (40)](https://github.com/user-attachments/assets/b8b2c34c-712c-45f3-aeaf-8d07f2d04ed5)
+
 
 #### 📄 On Submission:
 
@@ -56,7 +57,8 @@
     -   Warehouse
         
     -   Item Code
-        
+     ![image (39)](https://github.com/user-attachments/assets/9ee36770-f4ca-4d12-900f-6e0372d59ee8)
+   
 
 ----------
 
@@ -74,6 +76,8 @@
         
 
 On **submission**, each target item line results in a record in **Batch Barcode Tracker**.
+![image (40)](https://github.com/user-attachments/assets/3c34184b-a415-471e-b5ed-8582ead00052)
+
 
 ----------
 
@@ -103,6 +107,8 @@ On **submission**, each target item line results in a record in **Batch Barcode 
     -   Belonging to the selected batch
         
     -   Not already used in another line
+      ![image (38)](https://github.com/user-attachments/assets/28e781a7-7315-4320-b54b-6c54d8ee90c9)
+
         
 
 #### Barcode Handling:
@@ -119,6 +125,7 @@ On **submission**, each target item line results in a record in **Batch Barcode 
         
     -   Barcodes can be printed for dispatch or logistics visibility.
         
+![Screenshot 2025-06-21 at 13 05 14](https://github.com/user-attachments/assets/909501f6-102a-42d9-b153-bdda46508832)
 
 ----------
 
