@@ -47,7 +47,6 @@ def before_save(doc, method):
         generate_batch_no(doc)
 
                 
-
 def update_barcode_on_item(item_code, barcode):
     item_doc = frappe.get_doc("Item", item_code)
     item_doc.append("barcodes", {
