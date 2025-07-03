@@ -1,5 +1,7 @@
 import frappe
 from frappe import _
+from frappe.utils import flt
+
 
 def before_submit(doc, method=None):
     validate_qty(doc)
@@ -27,8 +29,9 @@ def validate_qty(doc):
         frappe.throw(_("Sales Order is not linked."))
 
     for qty in doc.locations:
-        total_qty += qty.qty
-    if total_qty > sales_order.total_qty:
+        total_qty += flt(qty.qty, 4)  # Or use 4/5 if you need more precision
+
+    if flt(total_qty, 4) > flt(sales_order.total_qty, 4):
         frappe.throw(
             _("Total Picked quantity <b>{0}</b> cannot exceed Sales Order quantity <b>{1}</b>").format(
                 total_qty, sales_order.total_qty
@@ -36,6 +39,7 @@ def validate_qty(doc):
         )
         
 def before_save(doc, method=None):
+    validate_qty(doc)
     calculate_package_weight(doc)
 def calculate_package_weight(doc):
     # total_weight = 0
