@@ -127,7 +127,14 @@ fixtures= [
                  "Pick List-custom_cubic",
                  "Pick List-custom_packing_weight",
                  "Pick List-custom_packaging_item",
-                 "Pick List-custom_package"
+                 "Pick List-custom_package",
+                 "Sales Invoice Item-custom_gross_weight",
+                 "Sales Invoice Item-custom_packaging_itemuom",
+                 "Sales Invoice Item-custom_column_break_y87es",
+                 "Sales Invoice Item-custom_cubic",
+                 "Sales Invoice Item-custom_package_weight",
+                 "Sales Invoice Item-custom_package_item",
+                 "Sales Invoice Item-custom_packing_weight_details",
                  )
             ]
         ]
