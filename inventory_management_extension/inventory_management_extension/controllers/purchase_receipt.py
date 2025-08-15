@@ -17,4 +17,3 @@ def on_submit(doc, method=None):
             if item.custom_transaction_barcode:
                 create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty, item.warehouse, item.custom_barcode_image)
                 update_serial_and_batch(doc, item)
-    
