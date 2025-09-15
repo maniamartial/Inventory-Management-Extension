@@ -1,5 +1,5 @@
 import frappe
-from .stock_entry import generate_batch_no, create_batch, generate_ean13, update_barcode_on_item, update_serial_and_batch, valiadte_item_has_batch
+from .stock_entry import generate_batch_no, create_batch, generate_ean13, update_barcode_on_item, update_serial_and_batch, valiadte_item_has_batch, generate_year_prefixed_batch
 from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker
 def before_save(doc, method=None):
     for item in doc.items:

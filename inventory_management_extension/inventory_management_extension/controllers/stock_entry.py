@@ -108,6 +108,45 @@ def create_batch(batch_no, item_code):
     return batch
 
 
+def generate_year_prefixed_batch():
+    """
+    Generate batch number with year prefix in format [YY]-Series
+    Example: 24-00001, 24-00002, 25-00001
+    """
+    from datetime import datetime
+    
+    # Get current year as 2-digit string
+    current_year = datetime.now().strftime("%y")
+    year_prefix = f"{current_year}-"
+    
+    # Find the latest batch for current year
+    latest_batch = frappe.db.sql(
+        """SELECT batch_id FROM `tabBatch`
+        WHERE batch_id LIKE %s
+        ORDER BY creation DESC LIMIT 1""",
+        (year_prefix + "%",), as_dict=True
+    )
+    
+    if latest_batch:
+        # Extract the series number from the latest batch
+        try:
+            series_part = latest_batch[0].batch_id.split("-")[-1]
+            next_series = int(series_part) + 1
+        except (ValueError, IndexError):
+            # If parsing fails, start from 1
+            next_series = 1
+    else:
+        # No batch exists for current year, start from 1
+        next_series = 1
+    
+    # Format series as 5-digit number with leading zeros
+    series_formatted = f"{next_series:05d}"
+    
+    # Combine year prefix with series
+    new_batch_id = f"{year_prefix}{series_formatted}"
+    
+    return new_batch_id
+
 def generate_code128():
     """
     Generate a valid random Code 128 barcode as a string and save it as an image.
@@ -137,19 +176,8 @@ def generate_batch_no(doc):
                 item.batch_no = item_batch_map[item.item_code]
                 continue
             
-            last_batch = frappe.db.get_value(
-                "Batch", 
-                filters={},
-                fieldname="batch_id", 
-                order_by="creation DESC"
-            )
-        
-            if last_batch and last_batch.isdigit():
-                next_number = int(last_batch) + 1
-            else:
-                next_number = 1000
-        
-            new_batch_id = f"{next_number}"
+            # Generate batch with year prefix [YY]-Series format
+            new_batch_id = generate_year_prefixed_batch()
         
             batch = frappe.get_doc({
                 "doctype": "Batch",
