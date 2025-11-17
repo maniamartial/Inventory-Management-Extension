@@ -55,6 +55,34 @@ frappe.ui.form.on('Pick List', {
 
   
         before_save: function(frm) {
+            // Validate duplicate barcodes in custom_items table
+            let custom_items = frm.doc.custom_items || [];
+            let barcode_map = {};
+            let duplicate_barcodes = [];
+            
+            custom_items.forEach((row) => {
+                if (row.barcode) {
+                    if (barcode_map[row.barcode]) {
+                        // Barcode already exists
+                        if (!duplicate_barcodes.includes(row.barcode)) {
+                            duplicate_barcodes.push(row.barcode);
+                        }
+                    } else {
+                        barcode_map[row.barcode] = true;
+                    }
+                }
+            });
+            
+            if (duplicate_barcodes.length > 0) {
+                frappe.msgprint({
+                    title: __('Duplicate Barcodes Found'),
+                    message: __('The following barcodes have been repeated in the custom_items table:<br><br><b>' + duplicate_barcodes.join(', ') + '</b><br><br>Please remove the duplicate barcodes before proceeding.'),
+                    indicator: 'orange'
+                });
+                frappe.validated = false;
+                return false;
+            }
+            
             // if(frm.is_new()){
             //     getSalesOrder(frm);
 
