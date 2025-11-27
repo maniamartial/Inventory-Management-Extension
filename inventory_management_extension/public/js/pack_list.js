@@ -11,6 +11,18 @@ frappe.ui.form.on('Pick List', {
                 }
             };
         };
+        
+        // Refresh the list of used barcodes in submitted pick lists
+        frappe.call({
+            method: "inventory_management_extension.inventory_management_extension.controllers.pick_list.get_used_barcodes_in_submitted_picklists",
+            callback: function(r) {
+                if (!r.exc && r.message) {
+                    frm._used_barcodes_in_submitted_picklists = r.message || [];
+                } else {
+                    frm._used_barcodes_in_submitted_picklists = [];
+                }
+            }
+        });
 
          if (frm.doc.docstatus === 1) {
             frm.add_custom_button(__('Sales Invoice'), function() {
@@ -31,20 +43,37 @@ frappe.ui.form.on('Pick List', {
     },
     onload: function(frm, cdt, cdn) {
         items = (frm.doc.custom_items || [])
+        
+        // Fetch barcodes already used in submitted Pick Lists
+        frappe.call({
+            method: "inventory_management_extension.inventory_management_extension.controllers.pick_list.get_used_barcodes_in_submitted_picklists",
+            callback: function(r) {
+                if (!r.exc && r.message) {
+                    frm._used_barcodes_in_submitted_picklists = r.message || [];
+                } else {
+                    frm._used_barcodes_in_submitted_picklists = [];
+                }
+            }
+        });
       
         frm.set_query("barcode", "custom_items", (frm, cdt, cdn) => {
             const row = locals[cdt][cdn];
             const selected_barcodes = items
                 .filter(r => r.name !== cdn && r.barcode)
                 .map(r => r.barcode);
+            
+            // Combine selected barcodes with barcodes used in submitted pick lists
+            const used_barcodes_in_submitted = frm._used_barcodes_in_submitted_picklists || [];
+            const all_excluded_barcodes = [...new Set([...selected_barcodes, ...used_barcodes_in_submitted])];
 
             return {
+                query: "inventory_management_extension.inventory_management_extension.controllers.pick_list.get_barcode_query",
                 filters: {
                     "item_code": row.item_code,
                     "batch": row.batch_no || undefined,
                     "sold": 0,
-                    "name": ["not in", selected_barcodes]
-                },
+                    "exclude_barcodes": all_excluded_barcodes
+                }
             };
         });
         frm.refresh_field("custom_items");
@@ -153,6 +182,18 @@ frappe.ui.form.on('Pick List', {
                 const barcode = frm.doc.custom_scan_transactional_barcode;
                 if (!barcode) return;
         
+                // Check if barcode is already used in submitted pick lists
+                const used_barcodes = frm._used_barcodes_in_submitted_picklists || [];
+                if (used_barcodes.includes(barcode)) {
+                    frappe.msgprint({
+                        title: __('Barcode Already Used'),
+                        message: __('This barcode has already been used in a submitted Pick List and cannot be used again.'),
+                        indicator: 'orange'
+                    });
+                    frm.set_value('custom_scan_transactional_barcode', '');
+                    return;
+                }
+        
                 frappe.call({
                     method: 'frappe.client.get',
                     args: {
@@ -162,6 +203,17 @@ frappe.ui.form.on('Pick List', {
                     callback: function(r) {
                         if (r.message) {
                             const data = r.message;
+                            
+                            // Additional check: verify barcode is not sold
+                            if (data.sold) {
+                                frappe.msgprint({
+                                    title: __('Barcode Already Sold'),
+                                    message: __('This barcode has already been marked as sold and cannot be used.'),
+                                    indicator: 'orange'
+                                });
+                                frm.set_value('custom_scan_transactional_barcode', '');
+                                return;
+                            }
         
                             const row = frm.add_child('custom_items');
                             row.item_code = data.item_code;
@@ -172,7 +224,7 @@ frappe.ui.form.on('Pick List', {
                             row.warehouse = data.warehouse;
         
                             frm.refresh_field('custom_items');
-                            frm.set_value('scan_barcode', ''); 
+                            frm.set_value('custom_scan_transactional_barcode', ''); 
                         } else {
                             frappe.msgprint(`No record found for barcode: ${barcode}`);
                         }

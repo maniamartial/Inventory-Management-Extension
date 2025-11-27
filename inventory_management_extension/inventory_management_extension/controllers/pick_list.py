@@ -101,3 +101,100 @@ def picklist_to_invoice(picklist_name):
     invoice.flags.ignore_permissions = True
     invoice.insert()
     return invoice.name
+
+
+@frappe.whitelist()
+def get_used_barcodes_in_submitted_picklists():
+    """
+    Get list of barcodes that are already used in submitted Pick Lists.
+    Returns a list of barcode names (Batch Barcode Tracker names).
+    """
+    # Get all barcodes from Pick List Extension (custom_items) 
+    # where parent Pick List is submitted (docstatus = 1)
+    used_barcodes = frappe.db.sql("""
+        SELECT DISTINCT ple.barcode
+        FROM `tabPick List Extension` ple
+        INNER JOIN `tabPick List` pl ON ple.parent = pl.name
+        WHERE pl.docstatus = 1 
+        AND ple.barcode IS NOT NULL
+        AND ple.barcode != ''
+    """, as_list=True)
+    
+    # Flatten the list of tuples to a simple list
+    return [barcode[0] for barcode in used_barcodes if barcode[0]]
+
+
+@frappe.whitelist()
+def get_barcode_query(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Custom query method for barcode field in Pick List Extension.
+    Excludes barcodes already used in submitted Pick Lists.
+    """
+    # Get the filters from the client
+    item_code = filters.get('item_code') if filters else None
+    batch = filters.get('batch') if filters else None
+    sold = filters.get('sold', 0) if filters else 0
+    exclude_barcodes = filters.get('exclude_barcodes', []) if filters else []
+    
+    # Build the base query
+    conditions = []
+    values = []
+    
+    # Item code filter
+    if item_code:
+        conditions.append("bbt.item_code = %s")
+        values.append(item_code)
+    
+    # Batch filter
+    if batch:
+        conditions.append("bbt.batch = %s")
+        values.append(batch)
+    
+    # Sold filter
+    conditions.append("bbt.sold = %s")
+    values.append(sold)
+    
+    # Text search
+    if txt:
+        conditions.append("(bbt.name LIKE %s OR bbt.barcode LIKE %s)")
+        values.extend([f"%{txt}%", f"%{txt}%"])
+    
+    # Get barcodes already used in submitted Pick Lists
+    used_barcodes = frappe.db.sql("""
+        SELECT DISTINCT ple.barcode
+        FROM `tabPick List Extension` ple
+        INNER JOIN `tabPick List` pl ON ple.parent = pl.name
+        WHERE pl.docstatus = 1 
+        AND ple.barcode IS NOT NULL
+        AND ple.barcode != ''
+    """, as_list=True)
+    
+    used_barcode_list = [barcode[0] for barcode in used_barcodes if barcode[0]]
+    
+    # Combine with exclude_barcodes from client
+    all_excluded = list(set(used_barcode_list + (exclude_barcodes if exclude_barcodes else [])))
+    
+    # Exclude used barcodes
+    if all_excluded:
+        # Use tuple for NOT IN clause
+        placeholders = ','.join(['%s'] * len(all_excluded))
+        conditions.append(f"bbt.name NOT IN ({placeholders})")
+        values.extend(all_excluded)
+    
+    # Build the final query
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    
+    query = f"""
+        SELECT DISTINCT bbt.name, bbt.barcode, bbt.item_code, bbt.qty
+        FROM `tabBatch Barcode Tracker` bbt
+        WHERE {where_clause}
+        ORDER BY bbt.name
+        LIMIT %s OFFSET %s
+    """
+    
+    values.extend([page_len, start])
+    
+    results = frappe.db.sql(query, tuple(values), as_dict=True)
+    
+    # Format results for Frappe's Link field
+    return [[r.name, r.barcode or r.name] for r in results]
