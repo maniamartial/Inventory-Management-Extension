@@ -135,6 +135,8 @@ fixtures= [
                  "Sales Invoice Item-custom_package_weight",
                  "Sales Invoice Item-custom_package_item",
                  "Sales Invoice Item-custom_packing_weight_details",
+                 
+                 "Selling Settings-custom_picklist_allowance",
                  )
             ]
         ]
