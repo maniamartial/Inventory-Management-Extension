@@ -33,12 +33,29 @@ def validate_qty(doc):
     for qty in doc.locations:
         total_qty += flt(qty.qty, 4)  # Or use 4/5 if you need more precision
 
-    if flt(total_qty, 4) > flt(sales_order.total_qty, 4):
-        frappe.throw(
-            _("Total Picked quantity <b>{0}</b> cannot exceed Sales Order quantity <b>{1}</b>").format(
-                total_qty, sales_order.total_qty
+    # Get picklist allowance from Selling Settings
+    picklist_allowance = frappe.db.get_single_value("Selling Settings", "custom_picklist_allowance") or 0
+    picklist_allowance = flt(picklist_allowance, 2)
+    
+    # Calculate allowed quantity: SO qty * (1 + allowance/100)
+    # Example: 40% allowance means 140% of SO qty is allowed
+    sales_order_qty = flt(sales_order.total_qty, 4)
+    allowed_qty = sales_order_qty * (1 + picklist_allowance / 100)
+    allowed_qty = flt(allowed_qty, 4)
+
+    if flt(total_qty, 4) > allowed_qty:
+        if picklist_allowance > 0:
+            frappe.throw(
+                _("Total Picked quantity <b>{0}</b> cannot exceed allowed quantity <b>{1}</b> (Sales Order quantity <b>{2}</b> + {3}% allowance)").format(
+                    total_qty, allowed_qty, sales_order_qty, picklist_allowance
+                )
             )
-        )
+        else:
+            frappe.throw(
+                _("Total Picked quantity <b>{0}</b> cannot exceed Sales Order quantity <b>{1}</b>").format(
+                    total_qty, sales_order_qty
+                )
+            )
         
 def before_save(doc, method=None):
     validate_qty(doc)
