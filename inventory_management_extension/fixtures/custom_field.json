@@ -207,7 +207,7 @@
   "modified": "2025-03-25 01:09:55.376392",
   "module": null,
   "name": "Stock Entry Detail-custom_transaction_barcode",
-  "no_copy": 0,
+  "no_copy": 1,
   "non_negative": 0,
   "options": null,
   "permlevel": 0,
