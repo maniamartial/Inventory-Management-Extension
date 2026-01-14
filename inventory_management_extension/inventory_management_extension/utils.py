@@ -11,7 +11,7 @@ import re
 from frappe.utils import flt
 
 
-def create_barcode_tracker(item_code, barcode, batch, qty,warehouse,barcode_image, is_lot=None):
+def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_image, is_lot=None, reference_document_type=None, reference_document_name=None):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
     """
@@ -29,13 +29,27 @@ def create_barcode_tracker(item_code, barcode, batch, qty,warehouse,barcode_imag
         "barcode_image": image,
         "is_lot": is_lot,
         "lot_no": batch if is_lot else None,
-        "warehouse":warehouse,
+        "warehouse": warehouse,
+        "reference_document_type": reference_document_type,
+        "reference_document_name": reference_document_name,
     })
     barcode_tracker.insert(ignore_permissions=True) 
     barcode_tracker.submit() 
     frappe.db.commit() 
 
     return barcode_tracker
+
+
+def mark_barcode_as_sold(barcode_name, reference_document_type, reference_document_name):
+    """
+    Mark a batch barcode tracker as sold and update reference fields.
+    """
+    frappe.db.set_value("Batch Barcode Tracker", barcode_name, {
+        "sold": 1,
+        "reference_document_type": reference_document_type,
+        "reference_document_name": reference_document_name
+    })
+    frappe.db.commit()
 
 
 @frappe.whitelist()
@@ -210,8 +224,10 @@ def get_pick_list(doc):
     
     pick_list_doc = frappe.get_doc("Pick List", parent_pick_list)
     
+    # Mark barcodes as sold with reference to Delivery Note
     for item in pick_list_doc.custom_items:
-        frappe.db.set_value("Batch Barcode Tracker", item.barcode, "sold", 1)
+        if item.barcode:
+            mark_barcode_as_sold(item.barcode, doc.doctype, doc.name)
         
     return pick_list_doc
 

@@ -2,7 +2,7 @@ import frappe
 import random
 import barcode
 from barcode.writer import ImageWriter
-from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker
+from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker, mark_barcode_as_sold
 
 def calculate_ean13_check_digit(ean12):
     """
@@ -22,7 +22,7 @@ def generate_ean13():
 
 
 def before_save(doc, method):
-    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack"]:
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack", "Material Transfer"]:
         for item in doc.items:
             # Skip if item doesn't need batch
             if not valiadte_item_has_batch(item.item_code):
@@ -34,6 +34,10 @@ def before_save(doc, method):
 
             # Repack: only generate for items being added (target warehouse exists)
             if doc.stock_entry_type == "Repack" and not item.t_warehouse:
+                continue
+
+            # Material Transfer: only generate for target items (items with t_warehouse)
+            if doc.stock_entry_type == "Material Transfer" and not item.t_warehouse:
                 continue
 
             # Material Receipt: all items with batch requirement are valid
@@ -58,12 +62,190 @@ def update_barcode_on_item(item_code, barcode):
 def on_submit(doc, method):
     is_lot=False
     
-    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack"]:
-        if doc.stock_entry_type == "Manufacture" and doc.custom_create_lot ==1:
-            is_lot=True
+    # Handle Manufacture: mark source barcodes as sold, create new tracker for finished items
+    if doc.stock_entry_type == "Manufacture":
+        handle_manufacture(doc)
+    
+    # Handle Material Receipt (existing logic - only create new trackers)
+    elif doc.stock_entry_type == "Material Receipt":
         for item in doc.items:
             if item.custom_transaction_barcode:
-                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty,item.t_warehouse, item.custom_barcode_image, is_lot=is_lot)
+                create_barcode_tracker(
+                    item.item_code, 
+                    item.custom_transaction_barcode, 
+                    item.batch_no, 
+                    item.qty,
+                    item.t_warehouse, 
+                    item.custom_barcode_image, 
+                    reference_document_type=doc.doctype,
+                    reference_document_name=doc.name
+                )
+                update_serial_and_batch(doc, item)
+    
+    # Handle Repack: mark source barcodes as sold, create new tracker for target
+    elif doc.stock_entry_type == "Repack":
+        handle_repack(doc)
+    
+    # Handle Material Transfer: mark source barcodes as sold, create new tracker for target
+    elif doc.stock_entry_type == "Material Transfer":
+        handle_material_transfer(doc)
+    
+    # Handle Material Issue: mark selected barcodes as sold, no new tracker
+    elif doc.stock_entry_type == "Material Issue":
+        handle_material_issue(doc)
+    
+    # Handle other stock entry types based on source/target warehouse
+    else:
+        handle_other_stock_entry_types(doc)
+
+
+def handle_manufacture(doc):
+    """
+    Handle Manufacture:
+    - Mark selected batch barcodes (raw materials/source items) as sold (consumed)
+    - Create new batch barcode tracker for finished items (target items)
+    """
+    is_lot = False
+    if doc.custom_create_lot == 1:
+        is_lot = True
+    
+    for item in doc.items:
+        # Mark source barcodes as sold if selected (raw materials being consumed)
+        if item.custom_batch_barcode and item.s_warehouse:
+            mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+        
+        # Create new tracker for finished items (target items with t_warehouse)
+        if item.is_finished_item and item.t_warehouse and item.custom_transaction_barcode and item.batch_no:
+            create_barcode_tracker(
+                item.item_code, 
+                item.custom_transaction_barcode, 
+                item.batch_no, 
+                item.qty,
+                item.t_warehouse, 
+                item.custom_barcode_image,
+                is_lot=is_lot,
+                reference_document_type=doc.doctype,
+                reference_document_name=doc.name
+            )
+            update_serial_and_batch(doc, item)
+
+
+def handle_repack(doc):
+    """
+    Handle Repack:
+    - Mark selected batch barcodes (source) as sold
+    - Create new batch barcode tracker for target items (finished goods)
+    """
+    is_lot = False
+    if doc.custom_create_lot == 1:
+        is_lot = True
+    
+    for item in doc.items:
+        # Mark source barcodes as sold if selected (source items)
+        if item.custom_batch_barcode and item.s_warehouse:
+            mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+        
+        # Create new tracker for target items (finished goods with t_warehouse)
+        if item.t_warehouse and item.custom_transaction_barcode and item.batch_no:
+            create_barcode_tracker(
+                item.item_code, 
+                item.custom_transaction_barcode, 
+                item.batch_no, 
+                item.qty,
+                item.t_warehouse, 
+                item.custom_barcode_image,
+                is_lot=is_lot,
+                reference_document_type=doc.doctype,
+                reference_document_name=doc.name
+            )
+            update_serial_and_batch(doc, item)
+
+
+def handle_material_transfer(doc):
+    """
+    Handle Material Transfer:
+    - Mark selected batch barcodes (source) as sold
+    - Create new batch barcode tracker for target items
+    """
+    for item in doc.items:
+        # Mark source barcodes as sold if selected
+        if item.custom_batch_barcode and item.s_warehouse:
+            mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+        
+        # Create new tracker for target items
+        if item.t_warehouse and item.custom_transaction_barcode and item.batch_no:
+            create_barcode_tracker(
+                item.item_code, 
+                item.custom_transaction_barcode, 
+                item.batch_no, 
+                item.qty,
+                item.t_warehouse, 
+                item.custom_barcode_image,
+                reference_document_type=doc.doctype,
+                reference_document_name=doc.name
+            )
+            update_serial_and_batch(doc, item)
+
+
+def handle_material_issue(doc):
+    """
+    Handle Material Issue:
+    - Mark selected batch barcodes as sold (items are gone, no new tracker)
+    """
+    for item in doc.items:
+        if item.custom_batch_barcode:
+            mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+
+
+def handle_other_stock_entry_types(doc):
+    """
+    Handle other stock entry types based on source/target warehouse logic:
+    - If only s_warehouse (stock out): mark barcodes as sold
+    - If only t_warehouse (stock in): create new tracker
+    - If both (stock out and in): mark source as sold, create new tracker for target
+    """
+    for item in doc.items:
+        has_source = bool(item.s_warehouse)
+        has_target = bool(item.t_warehouse)
+        
+        # Stock out only: mark barcodes as sold
+        if has_source and not has_target:
+            if item.custom_batch_barcode:
+                mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+        
+        # Stock in only: create new tracker
+        elif has_target and not has_source:
+            if item.custom_transaction_barcode and item.batch_no:
+                create_barcode_tracker(
+                    item.item_code, 
+                    item.custom_transaction_barcode, 
+                    item.batch_no, 
+                    item.qty,
+                    item.t_warehouse, 
+                    item.custom_barcode_image,
+                    reference_document_type=doc.doctype,
+                    reference_document_name=doc.name
+                )
+                update_serial_and_batch(doc, item)
+        
+        # Both source and target (like Repack): mark source as sold, create new tracker
+        elif has_source and has_target:
+            # Mark source barcode as sold if selected
+            if item.custom_batch_barcode:
+                mark_barcode_as_sold(item.custom_batch_barcode, doc.doctype, doc.name)
+            
+            # Create new tracker for target
+            if item.custom_transaction_barcode and item.batch_no:
+                create_barcode_tracker(
+                    item.item_code, 
+                    item.custom_transaction_barcode, 
+                    item.batch_no, 
+                    item.qty,
+                    item.t_warehouse, 
+                    item.custom_barcode_image,
+                    reference_document_type=doc.doctype,
+                    reference_document_name=doc.name
+                )
                 update_serial_and_batch(doc, item)
                 
                 

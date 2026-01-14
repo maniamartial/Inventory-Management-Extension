@@ -85,7 +85,7 @@ fixtures= [
                 "in",   
                 ("Stock Entry Detail-custom_transaction_barcode",
                  "Serial and Batch Entry-custom_barcode",
-                 "Purchase Receipt-custom_transaction_barcode"
+                 "Purchase Receipt-custom_transaction_barcode",
                  "Purchase Receipt Item-custom_column_break_ysrh2",
                  "Purchase Receipt Item-custom_transaction_barcode",
                  "Stock Entry Detail-custom_column_break_8o5fo",
@@ -137,6 +137,9 @@ fixtures= [
                  "Sales Invoice Item-custom_packing_weight_details",
                  
                  "Selling Settings-custom_picklist_allowance",
+                 "Purchase Receipt Item-custom_certification",
+                 "Batch-custom_certification",
+                 "Stock Entry Detail-custom_batch_barcode",
                  )
             ]
         ]

@@ -17,3 +17,9 @@ def on_submit(doc, method=None):
             if item.custom_transaction_barcode:
                 create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty, item.warehouse, item.custom_barcode_image)
                 update_serial_and_batch(doc, item)
+            
+            # Update batch with certification if present
+            if item.batch_no and item.custom_certification:
+                batch_doc = frappe.get_doc("Batch", item.batch_no)
+                batch_doc.custom_certification = item.custom_certification
+                batch_doc.save(ignore_permissions=True)

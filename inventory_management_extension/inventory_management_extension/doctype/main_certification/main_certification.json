@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:certification",
+ "creation": "2026-01-14 23:38:00.975624",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "certification"
+ ],
+ "fields": [
+  {
+   "fieldname": "certification",
+   "fieldtype": "Data",
+   "label": "Certification",
+   "unique": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-14 23:38:22.903609",
+ "modified_by": "Administrator",
+ "module": "Inventory Management Extension",
+ "name": "Main Certification",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

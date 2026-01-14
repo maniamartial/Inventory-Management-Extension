@@ -17,8 +17,85 @@ frappe.ui.form.on('Stock Entry Detail', {
     },
     custom_print: function(frm, cdt, cdn){
         print(frm, cdt, cdn);
+    },
+    batch_no: function(frm, cdt, cdn) {
+        setup_batch_barcode_filter(frm, cdt, cdn);
+    },
+    custom_batch_barcode: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        if (row.custom_batch_barcode) {
+            // Auto-fill item details and quantity from batch barcode tracker
+            frappe.call({
+                method: 'frappe.client.get',
+                args: {
+                    doctype: 'Batch Barcode Tracker',
+                    name: row.custom_batch_barcode
+                },
+                callback: function(r) {
+                    if (r.message) {
+                        // Auto-fill item code if not already set
+                        if (!row.item_code) {
+                            frappe.model.set_value(cdt, cdn, 'item_code', r.message.item_code);
+                        }
+                        // Auto-fill quantity from batch barcode tracker
+                        if (r.message.qty) {
+                            frappe.model.set_value(cdt, cdn, 'qty', r.message.qty);
+                        }
+                    }
+                }
+            });
+        }
     }
 });
+
+frappe.ui.form.on('Stock Entry', {
+    refresh: function(frm) {
+        setup_batch_barcode_filters(frm);
+    },
+    items_add: function(frm) {
+        setup_batch_barcode_filters(frm);
+    }
+});
+
+function setup_batch_barcode_filters(frm) {
+    if (!frm.fields_dict.items) return;
+    
+    frm.fields_dict.items.grid.get_field("custom_batch_barcode").get_query = function(doc, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        let filters = {
+            "sold": 0
+        };
+        
+        if (row.batch_no) {
+            filters["batch"] = row.batch_no;
+        }
+        
+        if (row.item_code) {
+            filters["item_code"] = row.item_code;
+        }
+        
+        return {
+            filters: filters
+        };
+    };
+}
+
+function setup_batch_barcode_filter(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    if (row.batch_no) {
+        frm.fields_dict.items.grid.get_field("custom_batch_barcode").get_query = function(doc, cdt, cdn) {
+            let current_row = locals[cdt][cdn];
+            return {
+                filters: {
+                    "batch": current_row.batch_no || row.batch_no,
+                    "item_code": current_row.item_code || row.item_code,
+                    "sold": 0
+                }
+            };
+        };
+        frm.refresh_field('items');
+    }
+}
 
 
 function split_iems_(frm){
