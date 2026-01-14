@@ -15,7 +15,16 @@ def before_save(doc, method=None):
 def on_submit(doc, method=None):
     for item in doc.items:
             if item.custom_transaction_barcode:
-                create_barcode_tracker(item.item_code, item.custom_transaction_barcode, item.batch_no, item.qty, item.warehouse, item.custom_barcode_image)
+                create_barcode_tracker(
+                    item.item_code, 
+                    item.custom_transaction_barcode, 
+                    item.batch_no, 
+                    item.qty, 
+                    item.warehouse, 
+                    item.custom_barcode_image,
+                    reference_document_type=doc.doctype,
+                    reference_document_name=doc.name
+                )
                 update_serial_and_batch(doc, item)
             
             # Update batch with certification if present
