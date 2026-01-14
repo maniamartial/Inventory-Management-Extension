@@ -139,6 +139,7 @@ fixtures= [
                  "Selling Settings-custom_picklist_allowance",
                  "Purchase Receipt Item-custom_certification",
                  "Batch-custom_certification",
+                 "Stock Entry Detail-custom_batch_barcode",
                  )
             ]
         ]
