@@ -14,6 +14,7 @@ from frappe.utils import flt
 def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_image, is_lot=None, reference_document_type=None, reference_document_name=None):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
+    Adds a transaction history entry to track creation.
     """
     image = barcode_image if barcode_image else generate_image_for_barcode(barcode)  
   
@@ -33,6 +34,17 @@ def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_im
         "reference_document_type": reference_document_type,
         "reference_document_name": reference_document_name,
     })
+    
+    # Add transaction history entry for creation
+    if reference_document_type and reference_document_name:
+        barcode_tracker.append("transaction_history", {
+            "transaction_type": "Created",
+            "reference_document_type": reference_document_type,
+            "reference_document_name": reference_document_name,
+            "posting_date": frappe.utils.today(),
+            "posting_time": frappe.utils.nowtime()
+        })
+    
     barcode_tracker.insert(ignore_permissions=True) 
     barcode_tracker.submit() 
     frappe.db.commit() 
@@ -42,13 +54,26 @@ def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_im
 
 def mark_barcode_as_sold(barcode_name, reference_document_type, reference_document_name):
     """
-    Mark a batch barcode tracker as sold and update reference fields.
+    Mark a batch barcode tracker as sold and add transaction history entry.
     """
-    frappe.db.set_value("Batch Barcode Tracker", barcode_name, {
-        "sold": 1,
+    # Get the barcode tracker document
+    barcode_tracker = frappe.get_doc("Batch Barcode Tracker", barcode_name)
+    
+    # Mark as sold
+    barcode_tracker.sold = 1
+    barcode_tracker.reference_document_type = reference_document_type
+    barcode_tracker.reference_document_name = reference_document_name
+    
+    # Add transaction history entry
+    barcode_tracker.append("transaction_history", {
+        "transaction_type": "Sold",
         "reference_document_type": reference_document_type,
-        "reference_document_name": reference_document_name
+        "reference_document_name": reference_document_name,
+        "posting_date": frappe.utils.today(),
+        "posting_time": frappe.utils.nowtime()
     })
+    
+    barcode_tracker.save(ignore_permissions=True)
     frappe.db.commit()
 
 
