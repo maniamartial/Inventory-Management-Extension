@@ -9,6 +9,7 @@
   "transaction_type",
   "reference_document_type",
   "reference_document_name",
+  "column_break_nemc",
   "posting_date",
   "posting_time"
  ],
@@ -36,10 +37,9 @@
   {
    "allow_on_submit": 1,
    "fieldname": "reference_document_name",
-   "fieldtype": "Dynamic Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Reference Document Name",
-   "options": "reference_document_type",
    "read_only": 1,
    "reqd": 1
   },
@@ -59,13 +59,17 @@
    "fieldtype": "Time",
    "label": "Posting Time",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_nemc",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-01-27 00:06:44.391583",
+ "modified": "2026-01-27 22:09:51.662602",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker Transaction",
