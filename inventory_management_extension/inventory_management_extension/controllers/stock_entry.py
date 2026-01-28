@@ -2,7 +2,11 @@ import frappe
 import random
 import barcode
 from barcode.writer import ImageWriter
-from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker, mark_barcode_as_sold
+from inventory_management_extension.inventory_management_extension.utils import (
+    create_barcode_tracker,
+    mark_barcode_as_sold,
+    reverse_barcode_transactions_for_doc,
+)
 
 def calculate_ean13_check_digit(ean12):
     """
@@ -60,8 +64,8 @@ def update_barcode_on_item(item_code, barcode):
     
 
 def on_submit(doc, method):
-    is_lot=False
-    
+    is_lot = False
+
     # Handle Manufacture: mark source barcodes as sold, create new tracker for finished items
     if doc.stock_entry_type == "Manufacture":
         handle_manufacture(doc)
@@ -97,6 +101,14 @@ def on_submit(doc, method):
     # Handle other stock entry types based on source/target warehouse
     else:
         handle_other_stock_entry_types(doc)
+
+
+def on_cancel(doc, method):
+    """
+    Reverse barcode effects when a Stock Entry is cancelled.
+    This uses generic logic based on the reference fields on Batch Barcode Tracker.
+    """
+    reverse_barcode_transactions_for_doc(doc)
 
 
 def handle_manufacture(doc):

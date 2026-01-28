@@ -20,10 +20,6 @@
   "warehouse",
   "is_lot",
   "lot_no",
-  "reference_section",
-  "reference_document_type",
-  "column_break_qjug",
-  "reference_document_name",
   "transaction_history_section",
   "transaction_history"
  ],
@@ -126,31 +122,6 @@
    "fieldtype": "Link",
    "label": "Lot",
    "options": "Batch"
-  },
-  {
-   "fieldname": "reference_section",
-   "fieldtype": "Section Break",
-   "label": "Reference"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "reference_document_type",
-   "fieldtype": "Link",
-   "label": "Reference Document Type",
-   "options": "DocType",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_qjug",
-   "fieldtype": "Column Break"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "reference_document_name",
-   "fieldtype": "Dynamic Link",
-   "label": "Reference Document Name",
-   "options": "reference_document_type",
-   "read_only": 1
   },
   {
    "fieldname": "transaction_history_section",

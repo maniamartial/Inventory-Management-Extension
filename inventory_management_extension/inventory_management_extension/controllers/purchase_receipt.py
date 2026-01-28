@@ -1,34 +1,55 @@
 import frappe
-from .stock_entry import generate_batch_no, create_batch, generate_ean13, update_barcode_on_item, update_serial_and_batch, valiadte_item_has_batch, generate_year_prefixed_batch
-from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker
+from .stock_entry import (
+    generate_batch_no,
+    create_batch,
+    generate_ean13,
+    update_barcode_on_item,
+    update_serial_and_batch,
+    valiadte_item_has_batch,
+    generate_year_prefixed_batch,
+)
+from inventory_management_extension.inventory_management_extension.utils import (
+    create_barcode_tracker,
+    reverse_barcode_transactions_for_doc,
+)
+
+
 def before_save(doc, method=None):
     for item in doc.items:
-
         if not valiadte_item_has_batch(item.item_code):
             continue
         if not item.custom_transaction_barcode:
-                item.custom_transaction_barcode=generate_ean13()
-                update_barcode_on_item(item.item_code, item.custom_transaction_barcode)
-            
+            item.custom_transaction_barcode = generate_ean13()
+            update_barcode_on_item(item.item_code, item.custom_transaction_barcode)
+
     generate_batch_no(doc)
-    
+
+
 def on_submit(doc, method=None):
     for item in doc.items:
-            if item.custom_transaction_barcode:
-                create_barcode_tracker(
-                    item.item_code, 
-                    item.custom_transaction_barcode, 
-                    item.batch_no, 
-                    item.qty, 
-                    item.warehouse, 
-                    item.custom_barcode_image,
-                    reference_document_type=doc.doctype,
-                    reference_document_name=doc.name
-                )
-                update_serial_and_batch(doc, item)
-            
-            # Update batch with certification if present
-            if item.batch_no and item.custom_certification:
-                batch_doc = frappe.get_doc("Batch", item.batch_no)
-                batch_doc.custom_certification = item.custom_certification
-                batch_doc.save(ignore_permissions=True)
+        if item.custom_transaction_barcode:
+            create_barcode_tracker(
+                item.item_code,
+                item.custom_transaction_barcode,
+                item.batch_no,
+                item.qty,
+                item.warehouse,
+                item.custom_barcode_image,
+                reference_document_type=doc.doctype,
+                reference_document_name=doc.name,
+            )
+            update_serial_and_batch(doc, item)
+
+        # Update batch with certification if present
+        if item.batch_no and item.custom_certification:
+            batch_doc = frappe.get_doc("Batch", item.batch_no)
+            batch_doc.custom_certification = item.custom_certification
+            batch_doc.save(ignore_permissions=True)
+
+
+def on_cancel(doc, method=None):
+    """
+    Reverse barcode effects when a Purchase Receipt is cancelled.
+    Created barcodes for this Purchase Receipt will be marked as sold (blocked).
+    """
+    reverse_barcode_transactions_for_doc(doc)
