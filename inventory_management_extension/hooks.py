@@ -221,18 +221,21 @@ fixtures= [
 doc_events = {
     "Stock Entry": {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.before_save",
-        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.on_submit"
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.on_submit",
+        "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.stock_entry.on_cancel",
     },
     "Supplier": {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.supplier.before_save"
     },
     "Purchase Receipt": {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save",
-        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_submit"
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_submit",
+        "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_cancel",
     },
     "Delivery Note":{
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
-        "before_insert": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save"
+        "before_insert": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save",
+        "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.on_cancel",
     },
     "Pick List": {
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_submit",

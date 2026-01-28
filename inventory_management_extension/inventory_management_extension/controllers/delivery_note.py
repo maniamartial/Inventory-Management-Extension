@@ -1,9 +1,15 @@
 import frappe
-from inventory_management_extension.inventory_management_extension.utils import create_barcode_tracker, update_batch_tracker, get_pick_list, add_packing_weights_to_delivery_note
+from inventory_management_extension.inventory_management_extension.utils import (
+    create_barcode_tracker,
+    update_batch_tracker,
+    get_pick_list,
+    add_packing_weights_to_delivery_note,
+    reverse_barcode_transactions_for_doc,
+)
 
 def before_submit(doc, method=None):
     update_batch_tracker(doc)
-    
+
 def update_customer(doc):
     pick_list_doc = get_pick_list(doc)
     doc.customer = pick_list_doc.customer if pick_list_doc else None
@@ -23,4 +29,12 @@ def before_save(doc, method=None):
         pick_list_doc = get_pick_list(doc)
         if pick_list_doc:
             doc.customer = pick_list_doc.customer
+
+
+def on_cancel(doc, method=None):
+    """
+    Reverse barcode effects when a Delivery Note is cancelled.
+    Barcodes marked as sold from the Pick List for this DN will be reopened.
+    """
+    reverse_barcode_transactions_for_doc(doc)
     
