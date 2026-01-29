@@ -1,8 +1,8 @@
 // Copyright (c) 2026, nei and contributors
 // For license information, please see license.txt
 
-frappe.query_reports["Hakuna Matata Traceability"] = {
-	"filters": [
+frappe.query_reports["Traceability"] = {
+"filters": [
 		{
 			"fieldname": "item_code",
 			"label": __("Item Code"),

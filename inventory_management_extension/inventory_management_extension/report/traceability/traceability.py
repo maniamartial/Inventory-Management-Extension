@@ -1,6 +1,7 @@
 # Copyright (c) 2026, nei and contributors
 # For license information, please see license.txt
 
+
 import frappe
 from frappe import _
 
