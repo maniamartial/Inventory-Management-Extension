@@ -82,6 +82,20 @@ def get_columns():
 			"width": 100,
 		},
 		{
+			"fieldname": "transaction_warehouse",
+			"label": _("Transaction Warehouse"),
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 120,
+		},
+		{
+			"fieldname": "from_warehouse",
+			"label": _("From Warehouse"),
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 120,
+		},
+		{
 			"fieldname": "reference_document_type",
 			"label": _("Reference Document Type"),
 			"fieldtype": "Link",
@@ -134,6 +148,8 @@ def get_data(filters):
 			bbt.posting_date AS manufactured_date,
 			batch.custom_certification AS certification,
 			txn.transaction_type,
+			txn.warehouse AS transaction_warehouse,
+			txn.from_warehouse,
 			txn.reference_document_type,
 			txn.reference_document_name,
 			txn.posting_date
@@ -143,7 +159,7 @@ def get_data(filters):
 			AND txn.parenttype = 'Batch Barcode Tracker'
 		LEFT JOIN `tabBatch` batch ON batch.name = bbt.batch
 		WHERE {where_clause}
-		ORDER BY bbt.name, txn.posting_date, txn.idx
+		ORDER BY bbt.name, txn.creation
 	""".format(where_clause=where_clause)
 
 	data = frappe.db.sql(sql, filters, as_dict=1)

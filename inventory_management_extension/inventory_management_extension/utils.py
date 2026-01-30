@@ -11,16 +11,29 @@ import re
 from frappe.utils import flt
 
 
-def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_image, is_lot=None, reference_document_type=None, reference_document_name=None):
+def create_barcode_tracker(
+    item_code,
+    barcode,
+    batch,
+    qty,
+    warehouse,
+    barcode_image,
+    is_lot=None,
+    reference_document_type=None,
+    reference_document_name=None,
+    transaction_type="Created",
+):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
-    Adds a transaction history entry to track creation.
+    Adds a transaction history entry. Use transaction_type="Purchased" for
+    Purchase Receipt, "Repacked" for Repack target, "Created" for Manufacture
+    or Material Receipt, etc.
     """
-    image = barcode_image if barcode_image else generate_image_for_barcode(barcode)  
-  
+    image = barcode_image if barcode_image else generate_image_for_barcode(barcode)
+
     if frappe.db.exists("Batch Barcode Tracker", {"barcode": barcode}):
         frappe.throw("Barcode already exists.")
-        
+
     barcode_tracker = frappe.get_doc({
         "doctype": "Batch Barcode Tracker",
         "item_code": item_code,
@@ -32,20 +45,21 @@ def create_barcode_tracker(item_code, barcode, batch, qty, warehouse, barcode_im
         "lot_no": batch if is_lot else None,
         "warehouse": warehouse,
     })
-    
-    # Add transaction history entry for creation
+
+    # Add transaction history entry
     if reference_document_type and reference_document_name:
         barcode_tracker.append("transaction_history", {
-            "transaction_type": "Created",
+            "transaction_type": transaction_type,
             "reference_document_type": reference_document_type,
             "reference_document_name": reference_document_name,
+            "warehouse": warehouse,
             "posting_date": frappe.utils.today(),
-            "posting_time": frappe.utils.nowtime()
+            "posting_time": frappe.utils.nowtime(),
         })
-    
-    barcode_tracker.insert(ignore_permissions=True) 
-    barcode_tracker.submit() 
-    frappe.db.commit() 
+
+    barcode_tracker.insert(ignore_permissions=True)
+    barcode_tracker.submit()
+    frappe.db.commit()
 
     return barcode_tracker
 
@@ -55,47 +69,83 @@ def _append_barcode_transaction(
     transaction_type: str,
     reference_document_type: str | None,
     reference_document_name: str | None,
+    warehouse: str | None = None,
+    from_warehouse: str | None = None,
 ):
     """Low-level helper to append a transaction row without touching parent docstatus."""
     if not (reference_document_type and reference_document_name):
         return
 
-    txn = frappe.get_doc(
-        {
-            "doctype": "Batch Barcode Tracker Transaction",
-            "parent": barcode_name,
-            "parenttype": "Batch Barcode Tracker",
-            "parentfield": "transaction_history",
-            "transaction_type": transaction_type,
-            "reference_document_type": reference_document_type,
-            "reference_document_name": reference_document_name,
-            "posting_date": frappe.utils.today(),
-            "posting_time": frappe.utils.nowtime(),
-        }
-    )
+    txn = frappe.get_doc({
+        "doctype": "Batch Barcode Tracker Transaction",
+        "parent": barcode_name,
+        "parenttype": "Batch Barcode Tracker",
+        "parentfield": "transaction_history",
+        "transaction_type": transaction_type,
+        "reference_document_type": reference_document_type,
+        "reference_document_name": reference_document_name,
+        "warehouse": warehouse,
+        "from_warehouse": from_warehouse,
+        "posting_date": frappe.utils.today(),
+        "posting_time": frappe.utils.nowtime(),
+    })
     txn.insert(ignore_permissions=True)
 
 
-def mark_barcode_as_sold(barcode_name, reference_document_type, reference_document_name):
+def mark_barcode_as_sold(
+    barcode_name,
+    reference_document_type,
+    reference_document_name,
+    transaction_type="Sold",
+    warehouse=None,
+):
     """
     Mark a batch barcode tracker as sold and add transaction history entry.
-    Uses direct DB updates so it also works for cancelled parents.
+    Use transaction_type e.g. "Sold", "Issue", "Consumption", "Repacked".
     """
     frappe.db.set_value("Batch Barcode Tracker", barcode_name, "sold", 1)
 
     _append_barcode_transaction(
         barcode_name,
-        "Sold",
+        transaction_type,
         reference_document_type,
         reference_document_name,
+        warehouse=warehouse,
     )
 
 
-def unmark_barcode_as_sold(barcode_name, reference_document_type, reference_document_name):
+def update_barcode_warehouse_and_add_transfer(
+    barcode_name,
+    to_warehouse,
+    from_warehouse,
+    reference_document_type,
+    reference_document_name,
+):
     """
-    Reverse a sold barcode (e.g. on cancellation) and add transaction history entry.
+    For Material Transfer: update the Batch Barcode Tracker warehouse and
+    record a Transfer transaction. Does not create a new tracker or change sold.
     """
-    # Only flip rows that are currently sold
+    frappe.db.set_value("Batch Barcode Tracker", barcode_name, "warehouse", to_warehouse)
+
+    _append_barcode_transaction(
+        barcode_name,
+        "Transfer",
+        reference_document_type,
+        reference_document_name,
+        warehouse=to_warehouse,
+        from_warehouse=from_warehouse,
+    )
+
+
+def unmark_barcode_as_sold(
+    barcode_name,
+    reference_document_type,
+    reference_document_name,
+    warehouse=None,
+):
+    """
+    Reverse a sold barcode (e.g. on cancellation) and add Reopened transaction.
+    """
     current_sold = frappe.db.get_value(
         "Batch Barcode Tracker", barcode_name, "sold"
     )
@@ -109,55 +159,80 @@ def unmark_barcode_as_sold(barcode_name, reference_document_type, reference_docu
         "Reopened",
         reference_document_type,
         reference_document_name,
+        warehouse=warehouse,
     )
 
 
 def reverse_barcode_transactions_for_doc(doc):
     """
-    Generic helper to reverse barcode effects for a cancelled document.
+    Reverse barcode effects for a cancelled document.
 
-    Behaviour:
-    - For barcodes that were SOLD by this document (transaction row = 'Sold'),
-      we unmark them as sold.
-    - For barcodes that were CREATED by this document (transaction row = 'Created'),
-      we mark them as sold so they can't be used anymore.
-
-    This gives the desired behaviour for:
-    - Manufacture / Repack / Transfers: raw materials become available again,
-      finished / target barcodes become blocked.
-    - Purchase Receipt / Material Receipt: created barcodes become blocked.
-    - Delivery Note / Material Issue: sold barcodes become available again.
+    - Transfer: revert warehouse to from_warehouse and add Transfer Reversed.
+    - Sold / Issue / Consumption: unmark as sold (Reopened).
+    - Created / Purchased / Repacked: mark as sold (block barcode).
     """
     if not doc or not getattr(doc, "doctype", None) or not getattr(doc, "name", None):
         return
 
-    # Barcodes consumed / sold by this document: transaction_type = "Sold"
+    # Transfer: revert warehouse using from_warehouse from the transaction row
+    transfer_rows = frappe.get_all(
+        "Batch Barcode Tracker Transaction",
+        filters={
+            "reference_document_type": doc.doctype,
+            "reference_document_name": doc.name,
+            "transaction_type": "Transfer",
+        },
+        fields=["parent", "from_warehouse", "warehouse"],
+    )
+    for row in transfer_rows:
+        if row.get("from_warehouse"):
+            frappe.db.set_value(
+                "Batch Barcode Tracker", row["parent"], "warehouse", row["from_warehouse"]
+            )
+            _append_barcode_transaction(
+                row["parent"],
+                "Transfer Reversed",
+                doc.doctype,
+                doc.name,
+                warehouse=row["from_warehouse"],
+                from_warehouse=row.get("warehouse"),
+            )
+
+    # Consumed / sold by this document: unmark as sold
+    consumed_types = ("Sold", "Issue", "Consumption")
     consumed_parents = frappe.get_all(
         "Batch Barcode Tracker Transaction",
         filters={
             "reference_document_type": doc.doctype,
             "reference_document_name": doc.name,
-            "transaction_type": "Sold",
+            "transaction_type": ["in", consumed_types],
         },
-        pluck="parent",
+        fields=["parent", "warehouse"],
     )
+    for row in consumed_parents:
+        unmark_barcode_as_sold(
+            row["parent"], doc.doctype, doc.name, warehouse=row.get("warehouse")
+        )
 
-    for barcode_name in set(consumed_parents):
-        unmark_barcode_as_sold(barcode_name, doc.doctype, doc.name)
-
-    # Barcodes created by this document: transaction_type = "Created"
+    # Created by this document: mark as sold (block)
+    created_types = ("Created", "Purchased", "Repacked")
     created_parents = frappe.get_all(
         "Batch Barcode Tracker Transaction",
         filters={
             "reference_document_type": doc.doctype,
             "reference_document_name": doc.name,
-            "transaction_type": "Created",
+            "transaction_type": ["in", created_types],
         },
-        pluck="parent",
+        fields=["parent", "warehouse"],
     )
-
-    for barcode_name in set(created_parents):
-        mark_barcode_as_sold(barcode_name, doc.doctype, doc.name)
+    for row in created_parents:
+        mark_barcode_as_sold(
+            row["parent"],
+            doc.doctype,
+            doc.name,
+            transaction_type="Sold",
+            warehouse=row.get("warehouse"),
+        )
 
 
 @frappe.whitelist()

@@ -74,6 +74,11 @@ function setup_batch_barcode_filters(frm) {
             filters["item_code"] = row.item_code;
         }
         
+        // Filter by source warehouse so only barcodes in that warehouse are shown
+        if (row.s_warehouse) {
+            filters["warehouse"] = row.s_warehouse;
+        }
+        
         return {
             filters: filters
         };
@@ -85,13 +90,15 @@ function setup_batch_barcode_filter(frm, cdt, cdn) {
     if (row.batch_no) {
         frm.fields_dict.items.grid.get_field("custom_batch_barcode").get_query = function(doc, cdt, cdn) {
             let current_row = locals[cdt][cdn];
-            return {
-                filters: {
-                    "batch": current_row.batch_no || row.batch_no,
-                    "item_code": current_row.item_code || row.item_code,
-                    "sold": 0
-                }
+            let filters = {
+                "batch": current_row.batch_no || row.batch_no,
+                "item_code": current_row.item_code || row.item_code,
+                "sold": 0
             };
+            if (current_row.s_warehouse) {
+                filters["warehouse"] = current_row.s_warehouse;
+            }
+            return { filters: filters };
         };
         frm.refresh_field('items');
     }

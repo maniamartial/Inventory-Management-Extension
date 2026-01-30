@@ -9,6 +9,8 @@
   "transaction_type",
   "reference_document_type",
   "reference_document_name",
+  "warehouse",
+  "from_warehouse",
   "column_break_nemc",
   "posting_date",
   "posting_time"
@@ -20,7 +22,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Transaction Type",
-   "options": "Created\nSold\nTransferred\nReopened",
+   "options": "Created\nSold\nReopened\nTransfer\nTransfer Reversed\nPurchased\nIssue\nConsumption\nRepacked",
    "read_only": 1,
    "reqd": 1
   },
@@ -42,6 +44,24 @@
    "label": "Reference Document Name",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "from_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "From Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -76,7 +96,7 @@
  "owner": "Administrator",
  "permissions": [],
  "row_format": "Dynamic",
- "sort_field": "modified",
- "sort_order": "DESC",
+ "sort_field": "creation",
+ "sort_order": "asc",
  "states": []
 }
