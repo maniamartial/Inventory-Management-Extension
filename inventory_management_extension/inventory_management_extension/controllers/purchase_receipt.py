@@ -37,6 +37,7 @@ def on_submit(doc, method=None):
                 item.custom_barcode_image,
                 reference_document_type=doc.doctype,
                 reference_document_name=doc.name,
+                transaction_type="Purchased",
             )
             update_serial_and_batch(doc, item)
 

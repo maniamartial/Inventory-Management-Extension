@@ -92,6 +92,7 @@
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "warehouse",
    "fieldtype": "Link",
    "label": "Warehouse",
@@ -140,7 +141,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-27 00:06:22.359658",
+ "modified": "2026-01-31 02:05:30.845981",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker",
