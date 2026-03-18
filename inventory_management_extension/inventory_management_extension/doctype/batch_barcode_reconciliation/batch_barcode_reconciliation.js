@@ -77,15 +77,32 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 
 	refresh: function (frm) {
 		if (frm.doc.docstatus < 1) {
+			// Fetch group: all fetch-related actions under one dropdown
 			frm.add_custom_button(__("Fetch Items from Warehouse"), function () {
 				frm.events.get_items(frm);
-			});
+			}, __("Action"));
+			frm.add_custom_button(__("Fetch Missing Batch Barcodes"), function () {
+				frm.events.fetch_missing_batch_barcodes(frm);
+			}, __("Action"));
+			frm.add_custom_button(__("Add Missing to Items"), function () {
+				frm.events.add_missing_to_items(frm);
+			}, __("Action"));
+			// Create group: Stock Entry from new barcodes and from missing barcodes
+			frm.add_custom_button(__("Create Stock Entry (Material Receipt)"), function () {
+				frm.events.create_material_receipt_from_new_barcodes(frm);
+			}, __("Create"));
+			frm.add_custom_button(__("Create Stock Entry (Material Issue)"), function () {
+				frm.events.create_material_issue_from_missing_barcodes(frm);
+			}, __("Create"));
 		}
 
-		// Add Convert to Stock Reconciliation button in Create group (only when submitted)
+		// Create group when submitted: Stock Reconciliation
 		if (frm.doc.docstatus === 1) {
 			frm.add_custom_button(__("Stock Reconciliation"), function () {
 				frm.events.convert_to_stock_reconciliation(frm);
+			}, __("Create"));
+			frm.add_custom_button(__("Create Stock Entry (Material Receipt)"), function () {
+				frm.events.create_material_receipt_from_new_barcodes(frm);
 			}, __("Create"));
 		}
 
@@ -94,6 +111,92 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 		}
 
 		frm.events.set_fields_onload_for_line_item(frm);
+	},
+
+	fetch_missing_batch_barcodes: function (frm) {
+		frappe.call({
+			method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.get_missing_batch_barcodes",
+			args: { doc: frm.doc },
+			callback: function (r) {
+				if (r.exc || !r.message || !r.message.length) {
+					frappe.msgprint(__("No missing batch barcodes. All trackers for each batch and warehouse are already in Items."));
+					return;
+				}
+				frm.clear_table("missing_batch_barcodes");
+				r.message.forEach(function (row) {
+					let child = frm.add_child("missing_batch_barcodes");
+					child.barcode = row.barcode;
+					child.qty = row.qty;
+					child.batch = row.batch;
+					child.warehouse = row.warehouse;
+				});
+				frm.refresh_field("missing_batch_barcodes");
+				frappe.show_alert({ message: __("Fetched {0} missing barcode(s). Add them to Items using 'Add Missing to Items'.", [r.message.length]), indicator: "blue" });
+			},
+		});
+	},
+
+	add_missing_to_items: function (frm) {
+		if (!frm.doc.missing_batch_barcodes || !frm.doc.missing_batch_barcodes.length) {
+			frappe.msgprint(__("No rows in Missing Batch Barcodes. Use 'Fetch Missing Batch Barcodes' first."));
+			return;
+		}
+		frm.save().then(function () {
+			frappe.call({
+				method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.add_missing_batch_barcodes_to_items",
+				args: { doc_name: frm.doc.name },
+				callback: function (r) {
+					if (!r.exc && r.message) {
+						frm.reload_doc().then(function () {
+							frm.trigger("set_valuation_rate_and_qty_for_all_items");
+						});
+						frappe.msgprint(r.message.message || __("Added missing barcodes to Items."));
+					}
+				},
+			});
+		});
+	},
+
+	create_material_receipt_from_new_barcodes: function (frm) {
+		if (!frm.doc.new_barcodes || !frm.doc.new_barcodes.length) {
+			frappe.msgprint(__("No rows in New Barcodes. Scan unknown barcodes first."));
+			return;
+		}
+		frappe.call({
+			method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.create_material_receipt_from_new_barcodes",
+			args: { doc_name: frm.doc.name },
+			callback: function (r) {
+				if (!r.exc && r.message && r.message.stock_entry) {
+					frappe.msgprint({ message: r.message.message, indicator: "green" });
+					frappe.set_route("Form", "Stock Entry", r.message.stock_entry);
+				}
+			},
+		});
+	},
+
+	create_material_issue_from_missing_barcodes: function (frm) {
+		if (!frm.doc.missing_batch_barcodes || !frm.doc.missing_batch_barcodes.length) {
+			frappe.msgprint(__("No rows in Missing Batch Barcodes. Use 'Fetch Missing Batch Barcodes' first."));
+			return;
+		}
+		function do_create() {
+			frappe.call({
+				method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.create_material_issue_from_missing_barcodes",
+				args: { doc_name: frm.doc.name },
+				callback: function (r) {
+					if (!r.exc && r.message && r.message.stock_entry) {
+						frappe.msgprint({ message: r.message.message, indicator: "green" });
+						frappe.set_route("Form", "Stock Entry", r.message.stock_entry);
+					}
+				},
+			});
+		}
+		// Save only if there are unsaved changes (avoid "No changes in document")
+		if (frm.is_dirty()) {
+			frm.save().then(do_create);
+		} else {
+			do_create();
+		}
 	},
 
 	set_fields_onload_for_line_item(frm) {
@@ -194,7 +297,21 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 			return;
 		}
 
-		// Call the backend to fetch batch barcode tracker data
+		function add_barcode_to_new_barcodes() {
+			const existing = (frm.doc.new_barcodes || []).find(function (row) { return row.barcode === scanned_barcode; });
+			if (existing) {
+				frappe.show_alert({ message: __("Barcode '{0}' already in New Barcodes.", [scanned_barcode]), indicator: "yellow" });
+			} else {
+				let row = frm.add_child("new_barcodes");
+				row.barcode = scanned_barcode;
+				row.qty = 1;
+				row.warehouse = frm.doc.set_warehouse || "";
+				frm.refresh_field("new_barcodes");
+				frappe.show_alert({ message: __("Barcode '{0}' added to New Barcodes. Set Item Code and use 'Create Stock Entry (Material Receipt)' when ready.", [scanned_barcode]), indicator: "blue" });
+			}
+			frm.set_value("scan_barcode", "");
+		}
+
 		frappe.call({
 			method: "frappe.client.get",
 			args: {
@@ -205,24 +322,17 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 				if (r.message) {
 					const tracker = r.message;
 					frm.events.process_batch_barcode_scan(frm, tracker);
-					// Clear the scan field after processing
 					frm.set_value("scan_barcode", "");
+				} else if (r.exc) {
+					// Server error (e.g. "Batch Barcode Tracker X not found"): treat as new barcode
+					add_barcode_to_new_barcodes();
 				} else {
-					frappe.msgprint({
-						title: __("Barcode Not Found"),
-						message: __("The scanned barcode '{0}' does not exist in the system.", [scanned_barcode]),
-						indicator: "red",
-					});
-					frm.set_value("scan_barcode", "");
+					add_barcode_to_new_barcodes();
 				}
 			},
 			error: function () {
-				frappe.msgprint({
-					title: __("Error"),
-					message: __("Failed to fetch barcode data. Please try again."),
-					indicator: "red",
-				});
-				frm.set_value("scan_barcode", "");
+				// Network/request error or doc not found: still add to New Barcodes
+				add_barcode_to_new_barcodes();
 			},
 		});
 	},
@@ -458,109 +568,8 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 		}
 	},
 
-	on_submit: function (frm) {
-		// Update Batch Barcode Tracker with reconciliation data
-		if (frm.doc.items && frm.doc.items.length > 0) {
-			frm.events.update_batch_barcode_tracker(frm);
-		}
-	},
-
-	update_batch_barcode_tracker: function (frm) {
-		// Process each reconciled item
-		frm.doc.items.forEach(function (item) {
-			if (item.batch_barcode) {
-				// Simple transfer: Take qty and quantity_difference directly from reconciliation
-				const new_qty = flt(item.qty);
-				const qty_change = flt(item.quantity_difference);
-				const warehouse = item.warehouse;
-
-				// Fetch and update Batch Barcode Tracker
-				frappe.call({
-					method: "frappe.client.get",
-					args: {
-						doctype: "Batch Barcode Tracker",
-						name: item.batch_barcode,
-					},
-					callback: function (r) {
-						if (r.message) {
-							const tracker_doc = r.message;
-							
-							// Update qty field in Batch Barcode Tracker
-							frappe.call({
-								method: "frappe.client.set_value",
-								args: {
-									doctype: "Batch Barcode Tracker",
-									name: item.batch_barcode,
-									fieldname: {
-										qty: new_qty,
-									},
-								},
-								callback: function (r2) {
-									if (!r2.exc) {
-										// Add transaction record to child table
-										frm.events.add_transaction_to_tracker(frm, item.batch_barcode, item, qty_change, warehouse);
-									}
-								},
-							});
-						}
-					},
-				});
-			}
-		});
-
-		frappe.msgprint({
-			title: __("Batch Barcode Tracker Updated"),
-			message: __("All scanned items have been updated in Batch Barcode Tracker with their new quantities and transaction records."),
-			indicator: "green",
-		});
-	},
-
-	add_transaction_to_tracker: function (frm, tracker_name, item, qty_change, warehouse) {
-		// Fetch the tracker to add transaction
-		frappe.call({
-			method: "frappe.client.get",
-			args: {
-				doctype: "Batch Barcode Tracker",
-				name: tracker_name,
-			},
-			callback: function (r) {
-				if (r.message) {
-					const tracker_doc = r.message;
-					
-					// Create transaction record with data from reconciliation
-					const transaction = {
-						doctype: "Batch Barcode Tracker Transaction",
-						transaction_type: "Reconciliation",
-						reference_document_type: "Batch Barcode Reconciliation",
-						reference_document_name: frm.doc.name,
-						warehouse: warehouse,
-						posting_date: frm.doc.posting_date,
-						posting_time: frm.doc.posting_time,
-						reconciliation: 1,  // Mark as reconciliation
-						quantity_change: qty_change,  // Direct from reconciliation
-					};
-
-					// Add child row to transaction_history
-					if (!tracker_doc.transaction_history) {
-						tracker_doc.transaction_history = [];
-					}
-					tracker_doc.transaction_history.push(transaction);
-
-					// Save the tracker with new transaction
-					frappe.call({
-						method: "frappe.client.set_value",
-						args: {
-							doctype: "Batch Barcode Tracker",
-							name: tracker_name,
-							fieldname: {
-								transaction_history: tracker_doc.transaction_history,
-							},
-						},
-					});
-				}
-			},
-		});
-	},
+	// Batch Barcode Tracker update (qty + single transaction per item) is done server-side only in on_submit (batch_barcode_reconciliation.py)
+	// to avoid creating duplicate transaction records.
 });
 
 frappe.ui.form.on("Batch Barcode Reconciliation Item", {
