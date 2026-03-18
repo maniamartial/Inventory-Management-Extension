@@ -30,7 +30,12 @@
   "accounting_dimensions_section",
   "cost_center",
   "dimension_col_break",
-  "amended_from"
+  "amended_from",
+  "more_info_tab",
+  "missing_barcode_section",
+  "missing_batch_barcodes",
+  "additiona_batch_barcodes_section",
+  "new_barcodes"
  ],
  "fields": [
   {
@@ -196,12 +201,39 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "more_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "More Info"
+  },
+  {
+   "fieldname": "missing_barcode_section",
+   "fieldtype": "Section Break",
+   "label": "Missing Barcode"
+  },
+  {
+   "fieldname": "missing_batch_barcodes",
+   "fieldtype": "Table",
+   "label": "Missing Batch Barcodes",
+   "options": "Missing Batch Barcode"
+  },
+  {
+   "fieldname": "additiona_batch_barcodes_section",
+   "fieldtype": "Section Break",
+   "label": "Additiona Batch Barcodes"
+  },
+  {
+   "fieldname": "new_barcodes",
+   "fieldtype": "Table",
+   "label": "New Barcodes",
+   "options": "Additional Batch Barcode"
   }
  ],
  "icon": "fa fa-upload-alt",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-17 22:15:58.058693",
+ "modified": "2026-03-19 00:31:08.332343",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Reconciliation",
