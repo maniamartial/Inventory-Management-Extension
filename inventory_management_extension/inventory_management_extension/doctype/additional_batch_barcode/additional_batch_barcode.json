@@ -7,11 +7,13 @@
  "engine": "InnoDB",
  "field_order": [
   "barcode",
+  "item_code",
   "qty",
-  "batch_barcode_tracker_created",
+  "item_name",
   "column_break_absb",
   "batch",
-  "warehouse"
+  "warehouse",
+  "batch_barcode_tracker_created"
  ],
  "fields": [
   {
@@ -40,7 +42,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Batch",
-   "options": "Batch"
+   "options": "Batch",
+   "reqd": 1
   },
   {
    "fieldname": "warehouse",
@@ -48,7 +51,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Warehouse",
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "reqd": 1
   },
   {
    "default": "0",
@@ -57,13 +61,28 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Batch Barcode Tracker Created"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "item_code.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-19 00:31:28.173922",
+ "modified": "2026-03-19 00:59:49.399191",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Additional Batch Barcode",

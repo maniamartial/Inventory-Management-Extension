@@ -76,16 +76,18 @@ def on_submit(doc, method):
         for item in doc.items:
             if item.custom_transaction_barcode:
                 create_barcode_tracker(
-                    item.item_code, 
-                    item.custom_transaction_barcode, 
-                    item.batch_no, 
+                    item.item_code,
+                    item.custom_transaction_barcode,
+                    item.batch_no,
                     item.qty,
-                    item.t_warehouse, 
-                    item.custom_barcode_image, 
+                    item.t_warehouse,
+                    item.custom_barcode_image,
                     reference_document_type=doc.doctype,
                     reference_document_name=doc.name
                 )
                 update_serial_and_batch(doc, item)
+        # Tick Batch Barcode Reconciliation new_barcodes where this barcode was created
+        _tick_new_barcodes_tracker_created(doc)
     
     # Handle Repack: mark source barcodes as sold, create new tracker for target
     elif doc.stock_entry_type == "Repack":
@@ -98,6 +100,7 @@ def on_submit(doc, method):
     # Handle Material Issue: mark selected barcodes as sold, no new tracker
     elif doc.stock_entry_type == "Material Issue":
         handle_material_issue(doc)
+        _tick_missing_barcodes_issued(doc)
     
     # Handle other stock entry types based on source/target warehouse
     else:
@@ -310,6 +313,48 @@ def update_serial_and_batch(doc, item):
             row.custom_barcode = item.custom_transaction_barcode
 
         bundle_doc.save(ignore_permissions=True)
+
+
+def _tick_new_barcodes_tracker_created(ste_doc):
+	"""After Material Receipt submit: tick batch_barcode_tracker_created on Batch Barcode Reconciliation new_barcodes for each barcode created."""
+	barcodes_created = [item.custom_transaction_barcode for item in (ste_doc.items or []) if item.custom_transaction_barcode]
+	if not barcodes_created:
+		return
+	# Batch Barcode Tracker name can equal barcode (autoname field:barcode)
+	for barcode in barcodes_created:
+		reconciliations = frappe.db.sql(
+			"""SELECT DISTINCT parent FROM `tabAdditional Batch Barcode`
+			   WHERE parenttype = 'Batch Barcode Reconciliation' AND barcode = %s AND (batch_barcode_tracker_created = 0 OR batch_barcode_tracker_created IS NULL)""",
+			(barcode,),
+			as_dict=True,
+		)
+		for r in reconciliations:
+			doc = frappe.get_doc("Batch Barcode Reconciliation", r.parent)
+			for row in (doc.new_barcodes or []):
+				if row.barcode == barcode:
+					row.batch_barcode_tracker_created = 1
+			doc.flags.ignore_validate_update_after_submit = True
+			doc.save(ignore_permissions=True)
+
+
+def _tick_missing_barcodes_issued(ste_doc):
+	"""After Material Issue submit: if this SE was created from missing barcodes, tick batch_barcode_tracker_update on that reconciliation."""
+	recon_name = getattr(ste_doc, "custom_batch_barcode_reconciliation", None)
+	barcode_list_json = getattr(ste_doc, "custom_missing_barcode_list", None)
+	if not recon_name or not barcode_list_json:
+		return
+	try:
+		barcode_list = frappe.parse_json(barcode_list_json)
+	except Exception:
+		return
+	if not barcode_list:
+		return
+	doc = frappe.get_doc("Batch Barcode Reconciliation", recon_name)
+	for row in (doc.missing_batch_barcodes or []):
+		if row.barcode in barcode_list:
+			row.batch_barcode_tracker_update = 1
+	doc.flags.ignore_validate_update_after_submit = True
+	doc.save(ignore_permissions=True)
 
 
 def latest_batch(batch_prefix):
