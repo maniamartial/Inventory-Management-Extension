@@ -495,6 +495,7 @@ def create_material_receipt_from_new_barcodes(doc_name):
 			"t_warehouse": warehouse,
 			"batch_no": row.get("batch"),
 			"custom_transaction_barcode": row.barcode,
+			"use_serial_batch_fields": 1,
 		})
 	if not items:
 		frappe.throw(_("No valid rows in New Barcodes."))
@@ -542,21 +543,23 @@ def create_material_issue_from_missing_barcodes(doc_name):
 			"s_warehouse": row.warehouse or tracker.warehouse,
 			"batch_no": tracker.batch,
 			"custom_batch_barcode": row.barcode,
+			"use_serial_batch_fields": 1,
 		})
 		barcode_list.append(row.barcode)
 	if not items:
 		frappe.throw(_("No valid rows in Missing Batch Barcodes."))
-	ste = frappe.get_doc({
+	# Build Stock Entry dict so custom fields are always saved if they exist (hasattr can be False on new doc)
+	ste_dict = {
 		"doctype": "Stock Entry",
 		"stock_entry_type": "Material Issue",
 		"company": company,
 		"posting_date": posting_date,
 		"posting_time": posting_time,
 		"items": items,
-	})
-	if hasattr(ste, "custom_batch_barcode_reconciliation"):
-		ste.custom_batch_barcode_reconciliation = doc_name
-	if hasattr(ste, "custom_missing_barcode_list"):
-		ste.custom_missing_barcode_list = frappe.as_json(barcode_list)
+	}
+	if frappe.db.exists("Custom Field", {"dt": "Stock Entry", "fieldname": "custom_batch_barcode_reconciliation"}):
+		ste_dict["custom_batch_barcode_reconciliation"] = doc_name
+		ste_dict["custom_missing_barcode_list"] = frappe.as_json(barcode_list)
+	ste = frappe.get_doc(ste_dict)
 	ste.insert(ignore_permissions=True)
 	return {"stock_entry": ste.name, "message": _("Stock Entry {0} created. Submit it to mark barcodes as issued and tick Missing Batch Barcodes.").format(ste.name)}
