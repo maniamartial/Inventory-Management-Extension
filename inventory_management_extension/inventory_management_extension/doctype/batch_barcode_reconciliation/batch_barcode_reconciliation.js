@@ -510,11 +510,11 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 				},
 				callback: function (r) {
 					const row = frappe.model.get_doc(cdt, cdn);
-					if (!frm.doc.scan_mode) {
-						frappe.model.set_value(cdt, cdn, "qty", r.message.qty);
-					}
+					// if (!frm.doc.scan_mode) {
+					// 	frappe.model.set_value(cdt, cdn, "qty", r.message.qty);
+					// }
 					frappe.model.set_value(cdt, cdn, "valuation_rate", r.message.rate);
-					frappe.model.set_value(cdt, cdn, "current_qty", r.message.qty);
+					// frappe.model.set_value(cdt, cdn, "current_qty", r.message.qty);
 					frappe.model.set_value(cdt, cdn, "current_valuation_rate", r.message.rate);
 					frappe.model.set_value(cdt, cdn, "current_amount", r.message.rate * r.message.qty);
 					frappe.model.set_value(cdt, cdn, "amount", row.qty * row.valuation_rate);
