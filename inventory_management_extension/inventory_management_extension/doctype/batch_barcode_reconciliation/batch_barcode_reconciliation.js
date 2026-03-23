@@ -358,10 +358,11 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 		const existing_item = frm.doc.items.find((item) => item.batch_barcode === tracker.name);
 
 		if (existing_item) {
-			// If the item already exists, just increase the quantity
+			// Keep current_qty = original tracker qty; only reconciled qty increases
 			const new_qty = flt(existing_item.qty) + flt(tracker.qty);
 			frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
-			
+			frm.events.set_amount_quantity(frm.doc, existing_item.doctype, existing_item.name);
+
 			frappe.show_alert({
 				message: __("Item updated. Quantity increased by {0}", [tracker.qty]),
 				indicator: "yellow",
@@ -384,8 +385,8 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 
 			frm.refresh_field("items");
 
-			// Fetch valuation rate and current quantity
-			frm.events.set_valuation_rate_and_qty(frm, item.doctype, item.name);
+			// current_qty from Batch Barcode Tracker; valuation from stock (rate only)
+			frm.events.sync_qty_from_tracker_and_valuation(frm, item.doctype, item.name, tracker);
 
 			frappe.show_alert({
 				message: __("Barcode '{0}' scanned successfully. Item added to the list.", [tracker.barcode]),
@@ -489,12 +490,137 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 
 	set_valuation_rate_and_qty_for_all_items: function (frm) {
 		frm.doc.items.forEach((row) => {
-			frm.events.set_valuation_rate_and_qty(frm, row.doctype, row.name);
+			if (row.batch_barcode) {
+				frm.events.sync_qty_from_tracker_and_valuation(frm, row.doctype, row.name, null);
+			} else {
+				frm.events.set_valuation_rate_and_qty(frm, row.doctype, row.name);
+			}
 		});
 	},
 
+	/**
+	 * For lines with Batch Barcode Tracker: current_qty = tracker.qty (not stock balance).
+	 * quantity_difference = reconciled qty - tracker qty. Valuation rate still from get_stock_balance_for.
+	 */
+	sync_qty_from_tracker_and_valuation: function (frm, cdt, cdn, tracker_doc) {
+		const row = frappe.model.get_doc(cdt, cdn);
+		if (!row.batch_barcode || !row.item_code || !row.warehouse) {
+			frm.events.set_valuation_rate_and_qty(frm, cdt, cdn);
+			return;
+		}
+
+		function apply_tracker_then_rate(t) {
+			const tracker_qty = flt(t.qty) || 0;
+			frappe.model.set_value(cdt, cdn, "current_qty", tracker_qty);
+			const drow = frappe.model.get_doc(cdt, cdn);
+			frappe.call({
+				method: "erpnext.stock.doctype.stock_reconciliation.stock_reconciliation.get_stock_balance_for",
+				args: {
+					item_code: drow.item_code,
+					warehouse: drow.warehouse,
+					posting_date: frm.doc.posting_date,
+					posting_time: frm.doc.posting_time,
+					batch_no: drow.batch_no,
+					row: drow,
+					company: frm.doc.company,
+				},
+				callback: function (r) {
+					if (!r || !r.message) {
+						return;
+					}
+					const d = frappe.model.get_doc(cdt, cdn);
+					const rate = flt(r.message.rate) || 0;
+					const cur_qty = flt(d.current_qty) || 0;
+					frappe.model.set_value(cdt, cdn, "valuation_rate", rate);
+					frappe.model.set_value(cdt, cdn, "current_valuation_rate", rate);
+					frappe.model.set_value(cdt, cdn, "current_amount", rate * cur_qty);
+					frappe.model.set_value(cdt, cdn, "amount", flt(d.qty) * rate);
+					frappe.model.set_value(cdt, cdn, "current_serial_no", r.message.serial_nos || "");
+					frappe.model.set_value(
+						cdt,
+						cdn,
+						"use_serial_batch_fields",
+						cint(r.message.use_serial_batch_fields)
+					);
+					if (frm.doc.purpose == "Stock Reconciliation" && !frm.doc.scan_mode) {
+						frappe.model.set_value(cdt, cdn, "serial_no", r.message.serial_nos || "");
+					}
+					frm.events.set_amount_quantity(frm.doc, cdt, cdn);
+				},
+			});
+		}
+
+		if (tracker_doc) {
+			apply_tracker_then_rate(tracker_doc);
+		} else {
+			frappe.call({
+				method: "frappe.client.get",
+				args: { doctype: "Batch Barcode Tracker", name: row.batch_barcode },
+				callback: function (r) {
+					if (r.message) {
+						apply_tracker_then_rate(r.message);
+					} else {
+						// Invalid tracker link: use stock ledger qty (avoid recursion with batch_barcode branch)
+						frm.events.set_valuation_from_stock_balance_only(frm, cdt, cdn);
+					}
+				},
+			});
+		}
+	},
+
+	/** Same as legacy stock reconciliation row fetch: current_qty from get_stock_balance (no tracker). */
+	set_valuation_from_stock_balance_only: function (frm, cdt, cdn) {
+		const d = frappe.model.get_doc(cdt, cdn);
+		if (!d.item_code || !d.warehouse) {
+			return;
+		}
+		frappe.call({
+			method: "erpnext.stock.doctype.stock_reconciliation.stock_reconciliation.get_stock_balance_for",
+			args: {
+				item_code: d.item_code,
+				warehouse: d.warehouse,
+				posting_date: frm.doc.posting_date,
+				posting_time: frm.doc.posting_time,
+				batch_no: d.batch_no,
+				row: d,
+				company: frm.doc.company,
+			},
+			callback: function (r) {
+				if (!r || !r.message) {
+					return;
+				}
+				const row = frappe.model.get_doc(cdt, cdn);
+				if (!frm.doc.scan_mode) {
+					frappe.model.set_value(cdt, cdn, "qty", r.message.qty);
+				}
+				frappe.model.set_value(cdt, cdn, "valuation_rate", r.message.rate);
+				frappe.model.set_value(cdt, cdn, "current_qty", r.message.qty);
+				frappe.model.set_value(cdt, cdn, "current_valuation_rate", r.message.rate);
+				frappe.model.set_value(cdt, cdn, "current_amount", r.message.rate * r.message.qty);
+				frappe.model.set_value(cdt, cdn, "amount", flt(row.qty) * flt(r.message.rate));
+				frappe.model.set_value(cdt, cdn, "current_serial_no", r.message.serial_nos);
+				frappe.model.set_value(
+					cdt,
+					cdn,
+					"use_serial_batch_fields",
+					r.message.use_serial_batch_fields
+				);
+				if (frm.doc.purpose == "Stock Reconciliation" && !frm.doc.scan_mode) {
+					frappe.model.set_value(cdt, cdn, "serial_no", r.message.serial_nos);
+				}
+				frm.events.set_amount_quantity(frm.doc, cdt, cdn);
+			},
+		});
+	},
+
+	/** Lines without batch_barcode: use ERPNext stock balance for current_qty (e.g. Fetch Items from Warehouse). */
 	set_valuation_rate_and_qty: function (frm, cdt, cdn) {
 		var d = frappe.model.get_doc(cdt, cdn);
+
+		if (d.batch_barcode) {
+			frm.events.sync_qty_from_tracker_and_valuation(frm, cdt, cdn, null);
+			return;
+		}
 
 		if (d.item_code && d.warehouse) {
 			frappe.call({
@@ -517,7 +643,7 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 					frappe.model.set_value(cdt, cdn, "current_qty", r.message.qty);
 					frappe.model.set_value(cdt, cdn, "current_valuation_rate", r.message.rate);
 					frappe.model.set_value(cdt, cdn, "current_amount", r.message.rate * r.message.qty);
-					frappe.model.set_value(cdt, cdn, "amount", row.qty * row.valuation_rate);
+					frappe.model.set_value(cdt, cdn, "amount", flt(row.qty) * flt(r.message.rate));
 					frappe.model.set_value(cdt, cdn, "current_serial_no", r.message.serial_nos);
 					frappe.model.set_value(
 						cdt,
@@ -529,6 +655,7 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 					if (frm.doc.purpose == "Stock Reconciliation" && !frm.doc.scan_mode) {
 						frappe.model.set_value(cdt, cdn, "serial_no", r.message.serial_nos);
 					}
+					frm.events.set_amount_quantity(frm.doc, cdt, cdn);
 				},
 			});
 		}
@@ -536,11 +663,12 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 
 	set_amount_quantity: function (doc, cdt, cdn) {
 		var d = frappe.model.get_doc(cdt, cdn);
-		if (d.qty && d.valuation_rate) {
-			frappe.model.set_value(cdt, cdn, "amount", flt(d.qty) * flt(d.valuation_rate));
-			frappe.model.set_value(cdt, cdn, "quantity_difference", flt(d.qty) - flt(d.current_qty));
-			frappe.model.set_value(cdt, cdn, "amount_difference", flt(d.amount) - flt(d.current_amount));
-		}
+		frappe.model.set_value(cdt, cdn, "quantity_difference", flt(d.qty) - flt(d.current_qty));
+		const vr = flt(d.valuation_rate);
+		const cur_vr = flt(d.current_valuation_rate);
+		frappe.model.set_value(cdt, cdn, "amount", flt(d.qty) * vr);
+		frappe.model.set_value(cdt, cdn, "current_amount", flt(d.current_qty) * cur_vr);
+		frappe.model.set_value(cdt, cdn, "amount_difference", flt(d.amount) - flt(d.current_amount));
 	},
 	toggle_display_account_head: function (frm) {
 		frm.toggle_display(
@@ -576,7 +704,9 @@ frappe.ui.form.on("Batch Barcode Reconciliation Item", {
 	// Ensure batch_barcode is saved when set
 	batch_barcode: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		console.log("batch_barcode field set to:", row.batch_barcode);
+		if (row.batch_barcode && row.item_code && row.warehouse) {
+			frm.events.sync_qty_from_tracker_and_valuation(frm, cdt, cdn, null);
+		}
 	},
 
 	warehouse: function (frm, cdt, cdn) {

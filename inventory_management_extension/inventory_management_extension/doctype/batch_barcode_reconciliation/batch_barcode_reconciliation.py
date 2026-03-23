@@ -93,8 +93,16 @@ class BatchBarcodeReconciliation(Document):
 				frappe.throw(_("Row {0}: Quantity is required").format(idx))
 
 	def calculate_differences(self):
-		"""Calculate quantity and amount differences"""
+		"""Calculate quantity and amount differences.
+
+		For rows linked to Batch Barcode Tracker, current_qty must be the tracker qty
+		(original barcode quantity), not ERPNext stock balance. Difference = qty - current_qty.
+		"""
 		for item in self.items:
+			if item.batch_barcode:
+				tracker_qty = frappe.db.get_value("Batch Barcode Tracker", item.batch_barcode, "qty")
+				if tracker_qty is not None:
+					item.current_qty = flt(tracker_qty)
 			if item.current_qty is None:
 				item.current_qty = 0
 			if item.current_valuation_rate is None:
@@ -103,8 +111,7 @@ class BatchBarcodeReconciliation(Document):
 				item.qty = 0
 			if item.valuation_rate is None:
 				item.valuation_rate = 0
-			
-			# Calculate differences
+
 			item.quantity_difference = flt(item.qty) - flt(item.current_qty)
 			item.current_amount = flt(item.current_qty) * flt(item.current_valuation_rate)
 			item.amount = flt(item.qty) * flt(item.valuation_rate)
