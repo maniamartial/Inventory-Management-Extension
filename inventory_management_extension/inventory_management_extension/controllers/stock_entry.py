@@ -28,7 +28,7 @@ def generate_ean13():
 
 
 def before_save(doc, method):
-    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack", "Material Transfer"]:
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack", "Material Transfer", "Material Transfer for Manufacture"]:
         for item in doc.items:
             # Skip if item doesn't need batch
             if not valiadte_item_has_batch(item.item_code):
@@ -36,6 +36,9 @@ def before_save(doc, method):
 
             # Manufacture: only generate for finished item
             if doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
+                continue
+            
+            if doc.stock_entry_type == "Material Transfer for Manufacture":
                 continue
 
             # Repack: only generate for items being added (target warehouse exists)
@@ -96,6 +99,9 @@ def on_submit(doc, method):
     
     # Handle Material Transfer: mark source barcodes as sold, create new tracker for target
     elif doc.stock_entry_type == "Material Transfer":
+        handle_material_transfer(doc)
+        
+    elif doc.stock_entry_type == "Material Transfer for Manufacture":
         handle_material_transfer(doc)
     
     # Handle Material Issue: mark selected barcodes as sold, no new tracker
