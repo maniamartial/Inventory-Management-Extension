@@ -77,24 +77,41 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 
 	refresh: function (frm) {
 		if (frm.doc.docstatus < 1) {
-			// Fetch group: all fetch-related actions under one dropdown
-			frm.add_custom_button(__("Fetch Items from Warehouse"), function () {
-				frm.events.get_items(frm);
-			}, __("Action"));
-			frm.add_custom_button(__("Fetch Missing Batch Barcodes"), function () {
-				frm.events.fetch_missing_batch_barcodes(frm);
-			}, __("Action"));
-			frm.add_custom_button(__("Add Missing to Items"), function () {
-				frm.events.add_missing_to_items(frm);
-			}, __("Action"));
-			// Create group: Stock Entry from new barcodes and from missing barcodes
-			frm.add_custom_button(__("Create Stock Entry (Material Receipt)"), function () {
-				frm.events.create_material_receipt_from_new_barcodes(frm);
-			}, __("Create"));
-			frm.add_custom_button(__("Create Stock Entry (Material Issue)"), function () {
-				frm.events.create_material_issue_from_missing_barcodes(frm);
-			}, __("Create"));
-		}
+        // Fetch group
+		frm.add_custom_button(__("Fetch Missing Batch Barcodes"), function () {
+            frm.events.fetch_missing_batch_barcodes(frm);
+        }, __("Action"));
+		
+        frm.add_custom_button(__("Fetch Items from Warehouse"), function () {
+            frm.events.get_items(frm);
+        }, __("Action"));
+        
+        // frm.add_custom_button(__("Add Missing to Items"), function () {
+        //     frm.events.add_missing_to_items(frm);
+        // }, __("Action"));
+
+        // Show "Create Stock Entry (Material Receipt)" only if there are
+        // new_barcodes rows where batch_barcode_tracker_created is not ticked
+        const has_unprocessed_new_barcodes = (frm.doc.new_barcodes || []).some(
+            row => !row.batch_barcode_tracker_created && row.barcode && row.qty
+        );
+        if (has_unprocessed_new_barcodes) {
+            frm.add_custom_button(__("Create Stock Entry (Material Receipt)"), function () {
+                frm.events.create_material_receipt_from_new_barcodes(frm);
+            }, __("Create"));
+        }
+
+        // Show "Create Stock Entry (Material Issue)" only if there are
+        // missing_batch_barcodes rows where batch_barcode_tracker_update is not ticked
+        const has_unprocessed_missing_barcodes = (frm.doc.missing_batch_barcodes || []).some(
+            row => !row.batch_barcode_tracker_update && row.barcode
+        );
+        if (has_unprocessed_missing_barcodes) {
+            frm.add_custom_button(__("Create Stock Entry (Material Issue)"), function () {
+                frm.events.create_material_issue_from_missing_barcodes(frm);
+            }, __("Create"));
+        }
+    }
 
 		// Create group when submitted: Stock Reconciliation
 		if (frm.doc.docstatus === 1) {
@@ -114,27 +131,40 @@ frappe.ui.form.on("Batch Barcode Reconciliation", {
 	},
 
 	fetch_missing_batch_barcodes: function (frm) {
-		frappe.call({
-			method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.get_missing_batch_barcodes",
-			args: { doc: frm.doc },
-			callback: function (r) {
-				if (r.exc || !r.message || !r.message.length) {
-					frappe.msgprint(__("No missing batch barcodes. All trackers for each batch and warehouse are already in Items."));
-					return;
-				}
-				frm.clear_table("missing_batch_barcodes");
-				r.message.forEach(function (row) {
-					let child = frm.add_child("missing_batch_barcodes");
-					child.barcode = row.barcode;
-					child.qty = row.qty;
-					child.batch = row.batch;
-					child.warehouse = row.warehouse;
-				});
-				frm.refresh_field("missing_batch_barcodes");
-				frappe.show_alert({ message: __("Fetched {0} missing barcode(s). Add them to Items using 'Add Missing to Items'.", [r.message.length]), indicator: "blue" });
-			},
-		});
-	},
+    frappe.call({
+        method: "inventory_management_extension.inventory_management_extension.doctype.batch_barcode_reconciliation.batch_barcode_reconciliation.get_missing_batch_barcodes",
+        args: { doc: frm.doc },
+        callback: function (r) {
+            if (r.exc || !r.message || !r.message.length) {
+                frappe.msgprint(__("No missing batch barcodes. All trackers for each batch and warehouse are already in Items."));
+                return;
+            }
+
+            // Build a set of barcodes already in the table to avoid duplicates
+            const existing_barcodes = new Set(
+                (frm.doc.missing_batch_barcodes || []).map(row => row.barcode)
+            );
+
+            let added = 0;
+            r.message.forEach(function (row) {
+                if (existing_barcodes.has(row.barcode)) return; // skip duplicates
+                let child = frm.add_child("missing_batch_barcodes");
+                child.barcode = row.barcode;
+                child.qty = row.qty;
+                child.batch = row.batch;
+                child.warehouse = row.warehouse;
+                added++;
+            });
+
+            frm.refresh_field("missing_batch_barcodes");
+            if (added > 0) {
+                frappe.show_alert({ message: __("Added {0} new missing barcode(s).", [added]), indicator: "blue" });
+            } else {
+                frappe.show_alert({ message: __("No new missing barcodes found. Table is already up to date."), indicator: "orange" });
+            }
+        },
+    });
+},
 
 	add_missing_to_items: function (frm) {
 		if (!frm.doc.missing_batch_barcodes || !frm.doc.missing_batch_barcodes.length) {
