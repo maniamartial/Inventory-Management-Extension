@@ -474,11 +474,56 @@ def add_missing_batch_barcodes_to_items(doc_name):
 	return {"added": added, "message": _("Added {0} missing barcode(s) to Items.").format(added)}
 
 
+# @frappe.whitelist()
+# def create_material_receipt_from_new_barcodes(doc_name):
+# 	"""
+# 	Create a Stock Entry of type Material Receipt from the new_barcodes table.
+# 	Each row should have barcode, item_code, qty, warehouse (batch optional).
+# 	"""
+# 	doc = frappe.get_doc("Batch Barcode Reconciliation", doc_name)
+# 	if not doc.new_barcodes:
+# 		frappe.throw(_("No rows in New Barcodes. Scan unknown barcodes first."))
+# 	company = doc.company
+# 	posting_date = doc.posting_date or frappe.utils.getdate()
+# 	posting_time = doc.posting_time or frappe.utils.get_time()
+# 	items = []
+# 	for row in doc.new_barcodes:
+# 		if not row.barcode or not row.qty:
+# 			continue
+# 		item_code = row.get("item_code")
+# 		if not item_code:
+# 			frappe.throw(_("Row with barcode '{0}' has no Item Code. Please set Item Code in New Barcodes.").format(row.barcode))
+# 		warehouse = row.get("warehouse") or doc.set_warehouse
+# 		if not warehouse:
+# 			frappe.throw(_("Set Default Warehouse or warehouse on each New Barcode row."))
+# 		items.append({
+# 			"item_code": item_code,
+# 			"qty": flt(row.qty),
+# 			"t_warehouse": warehouse,
+# 			"batch_no": row.get("batch"),
+# 			"custom_transaction_barcode": row.barcode,
+# 			"use_serial_batch_fields": 1,
+# 		})
+# 	if not items:
+# 		frappe.throw(_("No valid rows in New Barcodes."))
+# 	ste = frappe.get_doc({
+# 		"doctype": "Stock Entry",
+# 		"stock_entry_type": "Material Receipt",
+# 		"company": company,
+# 		"posting_date": posting_date,
+# 		"posting_time": posting_time,
+# 		"items": items,
+# 	})
+# 	ste.insert(ignore_permissions=True)
+# 	return {"stock_entry": ste.name, "message": _("Stock Entry {0} created.").format(ste.name)}
+
+
 @frappe.whitelist()
 def create_material_receipt_from_new_barcodes(doc_name):
 	"""
 	Create a Stock Entry of type Material Receipt from the new_barcodes table.
 	Each row should have barcode, item_code, qty, warehouse (batch optional).
+	Only processes rows where batch_barcode_tracker_created is not ticked.
 	"""
 	doc = frappe.get_doc("Batch Barcode Reconciliation", doc_name)
 	if not doc.new_barcodes:
@@ -488,6 +533,10 @@ def create_material_receipt_from_new_barcodes(doc_name):
 	posting_time = doc.posting_time or frappe.utils.get_time()
 	items = []
 	for row in doc.new_barcodes:
+		# Skip rows where batch_barcode_tracker_created is already ticked
+		if row.get("batch_barcode_tracker_created"):
+			continue
+
 		if not row.barcode or not row.qty:
 			continue
 		item_code = row.get("item_code")
@@ -505,7 +554,7 @@ def create_material_receipt_from_new_barcodes(doc_name):
 			"use_serial_batch_fields": 1,
 		})
 	if not items:
-		frappe.throw(_("No valid rows in New Barcodes."))
+		frappe.throw(_("No valid rows found where Batch Barcode Tracker has not been created."))
 	ste = frappe.get_doc({
 		"doctype": "Stock Entry",
 		"stock_entry_type": "Material Receipt",
@@ -536,6 +585,8 @@ def create_material_issue_from_missing_barcodes(doc_name):
 	for row in doc.missing_batch_barcodes:
 		if not row.barcode:
 			continue
+		if row.get("batch_barcode_tracker_update"):
+			continue  # already marked as updated, skip
 		tracker = frappe.db.get_value(
 			"Batch Barcode Tracker",
 			row.barcode,
