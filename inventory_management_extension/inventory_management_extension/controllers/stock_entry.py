@@ -112,6 +112,25 @@ def on_cancel(doc, method):
     reverse_barcode_transactions_for_doc(doc)
 
 
+def resolve_batch_barcode(item):
+    """
+    Resolve the Batch Barcode Tracker for a Stock Entry item.
+
+    Prefers item.custom_batch_barcode. When the user did not select a batch
+    barcode, falls back to resolving the tracker by item.custom_transaction_barcode.
+    Batch Barcode Tracker is autonamed by the barcode field, so the tracker
+    name equals the transaction barcode value when a tracker exists for it.
+    """
+    if item.custom_batch_barcode:
+        return item.custom_batch_barcode
+
+    if item.custom_transaction_barcode:
+        if frappe.db.exists("Batch Barcode Tracker", item.custom_transaction_barcode):
+            return item.custom_transaction_barcode
+
+    return None
+
+
 def handle_manufacture(doc):
     """
     Handle Manufacture:
@@ -124,19 +143,21 @@ def handle_manufacture(doc):
         is_lot = True
 
     for item in doc.items:
+        batch_barcode = resolve_batch_barcode(item)
+
         # Existing barcode: transfer (s -> t) = only update warehouse + Transfer; no sold
-        if item.custom_batch_barcode and item.s_warehouse and item.t_warehouse:
+        if batch_barcode and item.s_warehouse and item.t_warehouse:
             update_barcode_warehouse_and_add_transfer(
-                item.custom_batch_barcode,
+                batch_barcode,
                 item.t_warehouse,
                 item.s_warehouse,
                 doc.doctype,
                 doc.name,
             )
         # Existing barcode: consumption (s only, no t)
-        elif item.custom_batch_barcode and item.s_warehouse:
+        elif batch_barcode and item.s_warehouse:
             mark_barcode_as_sold(
-                item.custom_batch_barcode,
+                batch_barcode,
                 doc.doctype,
                 doc.name,
                 transaction_type="Consumption",
@@ -172,17 +193,19 @@ def handle_repack(doc):
         is_lot = True
 
     for item in doc.items:
-        if item.custom_batch_barcode and item.s_warehouse and item.t_warehouse:
+        batch_barcode = resolve_batch_barcode(item)
+
+        if batch_barcode and item.s_warehouse and item.t_warehouse:
             update_barcode_warehouse_and_add_transfer(
-                item.custom_batch_barcode,
+                batch_barcode,
                 item.t_warehouse,
                 item.s_warehouse,
                 doc.doctype,
                 doc.name,
             )
-        elif item.custom_batch_barcode and item.s_warehouse:
+        elif batch_barcode and item.s_warehouse:
             mark_barcode_as_sold(
-                item.custom_batch_barcode,
+                batch_barcode,
                 doc.doctype,
                 doc.name,
                 transaction_type="Consumption",
@@ -212,9 +235,11 @@ def handle_material_transfer(doc):
       existing Batch Barcode Tracker and record a Transfer transaction.
     """
     for item in doc.items:
-        if item.custom_batch_barcode and item.s_warehouse and item.t_warehouse:
+        batch_barcode = resolve_batch_barcode(item)
+
+        if batch_barcode and item.s_warehouse and item.t_warehouse:
             update_barcode_warehouse_and_add_transfer(
-                item.custom_batch_barcode,
+                batch_barcode,
                 item.t_warehouse,
                 item.s_warehouse,
                 doc.doctype,
@@ -227,9 +252,11 @@ def handle_material_issue(doc):
     Handle Material Issue: mark selected batch barcodes as sold with Issue.
     """
     for item in doc.items:
-        if item.custom_batch_barcode:
+        batch_barcode = resolve_batch_barcode(item)
+
+        if batch_barcode:
             mark_barcode_as_sold(
-                item.custom_batch_barcode,
+                batch_barcode,
                 doc.doctype,
                 doc.name,
                 transaction_type="Issue",
@@ -246,10 +273,12 @@ def handle_other_stock_entry_types(doc):
         has_source = bool(item.s_warehouse)
         has_target = bool(item.t_warehouse)
 
+        batch_barcode = resolve_batch_barcode(item)
+
         if has_source and not has_target:
-            if item.custom_batch_barcode:
+            if batch_barcode:
                 mark_barcode_as_sold(
-                    item.custom_batch_barcode,
+                    batch_barcode,
                     doc.doctype,
                     doc.name,
                     transaction_type="Issue",
@@ -273,9 +302,9 @@ def handle_other_stock_entry_types(doc):
 
         elif has_source and has_target:
             # Same barcode moving s -> t = Transfer only (update warehouse, no sold)
-            if item.custom_batch_barcode:
+            if batch_barcode:
                 update_barcode_warehouse_and_add_transfer(
-                    item.custom_batch_barcode,
+                    batch_barcode,
                     item.t_warehouse,
                     item.s_warehouse,
                     doc.doctype,

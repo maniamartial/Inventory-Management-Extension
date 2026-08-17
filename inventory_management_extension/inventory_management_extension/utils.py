@@ -423,3 +423,111 @@ def add_packing_weights_to_delivery_note(doc):
             item.custom_package_item = pick_list_item.custom_packaging_item
             item.custom_gross_weight = pick_list_item.custom_gross_weight
             item.custom_package_weight = pick_list_item.custom_packing_weight
+
+
+@frappe.whitelist()
+def enqueue_reconcile_all_batch_barcodes(start_date=None, end_date=None):
+    """
+    Enqueue a background job that reconciles Batch Barcode Trackers against
+    submitted Stock Entries (Repack, Manufacture, Material Transfer, Material
+    Issue, etc.) where the stock entry row carried the tracker's barcode as
+    `custom_transaction_barcode` but the user did NOT select `custom_batch_barcode`.
+
+    Only Stock Entries whose posting_date falls within [start_date, end_date]
+    are processed. Runs in the background because it may span many trackers and
+    many stock entries. Returns the background job id.
+    """
+    job = frappe.enqueue(
+        "inventory_management_extension.inventory_management_extension.utils.reconcile_all_batch_barcodes_job",
+        queue="long",
+        timeout=7200,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return {"job_id": job.id, "status": "queued", "start_date": start_date, "end_date": end_date}
+
+
+def reconcile_all_batch_barcodes_job(start_date=None, end_date=None):
+    """
+    Background job: find submitted Stock Entry Detail rows (optionally filtered
+    by the parent Stock Entry posting_date within [start_date, end_date]) where
+    `custom_transaction_barcode` matches an existing Batch Barcode Tracker but
+    `custom_batch_barcode` was left empty/NULL, and reconcile those trackers.
+
+    Reuses BatchBarcodeTracker.reconcile_stock_entries() per tracker, which is
+    idempotent (skips Stock Entries already recorded on the tracker).
+    """
+    if not frappe.db.has_column("Stock Entry Detail", "custom_transaction_barcode"):
+        frappe.log_error(
+            "custom_transaction_barcode column missing on Stock Entry Detail",
+            "Reconcile All Batch Barcodes",
+        )
+        return {"processed_count": 0, "skipped_count": 0}
+
+    date_filters = ""
+    params = []
+
+    if start_date:
+        date_filters += " AND se.posting_date >= %s"
+        params.append(start_date)
+    if end_date:
+        date_filters += " AND se.posting_date <= %s"
+        params.append(end_date)
+
+    rows = frappe.db.sql(
+        """
+        SELECT
+            sed.name,
+            sed.parent,
+            sed.custom_transaction_barcode
+        FROM `tabStock Entry Detail` sed
+        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+        WHERE sed.docstatus = 1
+            AND sed.custom_transaction_barcode IS NOT NULL
+            AND sed.custom_transaction_barcode != ''
+            AND (sed.custom_batch_barcode IS NULL OR sed.custom_batch_barcode = '')
+        """ + date_filters + """
+        ORDER BY sed.creation ASC
+        """,
+        params,
+        as_dict=True,
+    )
+
+    candidate_barcodes = {row["custom_transaction_barcode"] for row in rows if row.get("custom_transaction_barcode")}
+    if not candidate_barcodes:
+        return {"processed_count": 0, "skipped_count": 0}
+
+    valid_barcodes = set(
+        frappe.get_all(
+            "Batch Barcode Tracker",
+            filters={"barcode": ["in", list(candidate_barcodes)]},
+            pluck="barcode",
+        )
+    )
+
+    results = {"processed": [], "skipped": [], "processed_count": 0, "skipped_count": 0}
+
+    for barcode in sorted(valid_barcodes):
+        try:
+            tracker = frappe.get_doc("Batch Barcode Tracker", barcode)
+            result = tracker.reconcile_stock_entries(
+                start_date=start_date,
+                end_date=end_date,
+            )
+            results["processed"].extend(result.get("processed", []))
+            results["skipped"].extend(result.get("skipped", []))
+            results["processed_count"] += result.get("processed_count", 0)
+            results["skipped_count"] += result.get("skipped_count", 0)
+        except Exception as e:
+            frappe.log_error(
+                f"Reconcile all batch barcodes failed for tracker {barcode}: {e}",
+                "Reconcile All Batch Barcodes",
+            )
+            results["skipped"].append({
+                "stock_entry": "N/A",
+                "item_code": barcode,
+                "reason": f"Tracker error: {e}",
+            })
+            results["skipped_count"] += 1
+
+    return results

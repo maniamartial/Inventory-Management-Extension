@@ -1,36 +1,73 @@
 // Copyright (c) 2025, nei and contributors
 // For license information, please see license.txt
 
-// frappe.ui.form.on("Batch Barcode Tracker", {
-// 	refresh(frm) {
-// alert("Mania")
-// 	},
-// });
+frappe.ui.form.on("Batch Barcode Tracker", {
+	refresh(frm) {
+		if (!frm.is_new() && frm.doc.docstatus === 1) {
+			frm.add_custom_button(__("Reconcile Stock Entries"), function() {
+				prompt_date_range_and_enqueue(frm);
+			});
+		}
+	}
+});
 
-// frappe.listview_settings['Batch Barcode Tracker'] = {
-//     onload: function(listview) {
-//         frappe.throw('This is a custom list view for Batch Barcode Tracker. Please use the standard interface for other documents.');
-//         // Create a custom input field
-//         let input = $(`<input type="text" placeholder="Scan Barcode" class="form-control" style="width: 200px; margin-left: 10px;">`);
+function prompt_date_range_and_enqueue(frm) {
+	let d = new frappe.ui.Dialog({
+		title: __("Reconcile Stock Entries"),
+		fields: [
+			{
+				fieldname: "start_date",
+				label: __("Start Date"),
+				fieldtype: "Date",
+				reqd: 1
+			},
+			{
+				fieldname: "end_date",
+				label: __("End Date"),
+				fieldtype: "Date",
+				reqd: 1
+			}
+		],
+		primary_action_label: __("Reconcile in Background"),
+		primary_action: function(values) {
+			d.hide();
+			enqueue_reconcile_all(frm, values.start_date, values.end_date);
+		}
+	});
 
-//         // Add the field next to the filters
-//         listview.page.add_inner_button(' ', () => {}, 'Scan Barcode').parent().html(input);
+	d.show();
+}
 
-//         // Handle barcode input (press Enter or scan)
-//         input.on('keypress', function(e) {
-//             if (e.which === 13) {
-//                 const barcode = input.val().trim();
-//                 if (barcode) {
-//                     listview.filter_area.add([[ "Barcode Tracker", "barcode", "=", barcode ]]);
-//                     input.val(''); // Clear input
-//                 }
-//             }
-//         });
-//     }
-// };
-// frappe.listview_settings['Batch Barcode Tracker'] = {
-//     onload: function(listview) {
-//         frappe.msgprint(__('This is a custom list view for Batch Barcode Tracker. Please use the standard interface for other documents.'));
-//     }
-// };
-
+function enqueue_reconcile_all(frm, start_date, end_date) {
+	frappe.call({
+		method: "inventory_management_extension.inventory_management_extension.utils.enqueue_reconcile_all_batch_barcodes",
+		args: {
+			start_date: start_date,
+			end_date: end_date
+		},
+		freeze: true,
+		freeze_message: __("Enqueuing reconciliation job..."),
+		callback: function(r) {
+			if (r.message && r.message.job_id) {
+				frappe.msgprint({
+					title: __("Reconciliation Queued"),
+					message: __("Background reconciliation job {0} has been queued for Stock Entries posted between {1} and {2}.", [r.message.job_id, start_date, end_date]),
+					indicator: "blue"
+				});
+			} else {
+				frappe.msgprint({
+					title: __("Reconciliation Queued"),
+					message: __("Background reconciliation job has been queued for Stock Entries posted between {0} and {1}.", [start_date, end_date]),
+					indicator: "blue"
+				});
+			}
+		},
+		error: function(r) {
+			frappe.msgprint({
+				title: __("Failed to Queue Job"),
+				message: __("An error occurred while enqueuing the reconciliation job: {0}", [r.message]),
+				indicator: "red"
+			});
+		}
+	});
+}
