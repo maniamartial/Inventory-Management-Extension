@@ -436,12 +436,14 @@ def enqueue_reconcile_all_batch_barcodes(start_date=None, end_date=None):
     """
     Enqueue a background job that reconciles Batch Barcode Trackers against
     submitted Stock Entries (Repack, Manufacture, Material Transfer, Material
-    Issue, etc.) where the stock entry row carried the tracker's barcode as
-    `custom_transaction_barcode` but the user did NOT select `custom_batch_barcode`.
+    Issue, etc.). Matches by transaction barcode, and also by item + batch +
+    full quantity for consume-only rows when the typed barcode does not match.
 
-    Only Stock Entries whose posting_date falls within [start_date, end_date]
-    are processed. Runs in the background because it may span many trackers and
-    many stock entries. Returns the background job id.
+    Only Stock Entries whose creation date falls within [start_date, end_date]
+    are processed (not posting_date, which can be backdated). A consume entry
+    is matched only if it was created after the tracker already existed.
+    Runs in the background because it may span many trackers and many stock
+    entries. Returns the background job id.
     """
     job = frappe.enqueue(
         "inventory_management_extension.inventory_management_extension.utils.reconcile_all_batch_barcodes_job",
@@ -453,15 +455,96 @@ def enqueue_reconcile_all_batch_barcodes(start_date=None, end_date=None):
     return {"job_id": job.id, "status": "queued", "start_date": start_date, "end_date": end_date}
 
 
+def _reconcile_date_filters(start_date=None, end_date=None):
+    """Filter by Stock Entry creation date, not posting_date."""
+    date_filters = ""
+    params = []
+    if start_date:
+        date_filters += " AND DATE(se.creation) >= %s"
+        params.append(start_date)
+    if end_date:
+        date_filters += " AND DATE(se.creation) <= %s"
+        params.append(end_date)
+    return date_filters, params
+
+
+def _candidate_barcodes_from_transaction_barcode(date_filters, params):
+    rows = frappe.db.sql(
+        """
+        SELECT sed.custom_transaction_barcode
+        FROM `tabStock Entry Detail` sed
+        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+        WHERE sed.docstatus = 1
+            AND sed.custom_transaction_barcode IS NOT NULL
+            AND sed.custom_transaction_barcode != ''
+            AND (sed.custom_batch_barcode IS NULL OR sed.custom_batch_barcode = '')
+        """ + date_filters,
+        params,
+        as_dict=True,
+    )
+    typed = {
+        row["custom_transaction_barcode"]
+        for row in rows
+        if row.get("custom_transaction_barcode")
+    }
+    if not typed:
+        return set()
+    return set(
+        frappe.get_all(
+            "Batch Barcode Tracker",
+            filters={"barcode": ["in", list(typed)]},
+            pluck="barcode",
+        )
+    )
+
+
+def _candidate_barcodes_from_item_batch_qty(date_filters, params):
+    """
+    Unsold trackers that can be paired to a consume-only Stock Entry row by
+    item, batch, and full quantity (transaction barcode may be wrong / missing).
+    """
+    rows = frappe.db.sql(
+        """
+        SELECT DISTINCT bbt.barcode
+        FROM `tabStock Entry Detail` sed
+        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+        INNER JOIN `tabBatch Barcode Tracker` bbt
+            ON bbt.item_code = sed.item_code
+            AND IFNULL(IF(bbt.is_lot = 1, bbt.lot_no, bbt.batch), '') = sed.batch_no
+            AND ABS(bbt.qty - sed.qty) < 0.00001
+            AND bbt.sold = 0
+            AND bbt.docstatus = 1
+            AND se.creation >= bbt.creation
+            AND (IFNULL(bbt.warehouse, '') = '' OR bbt.warehouse = sed.s_warehouse)
+        WHERE sed.docstatus = 1
+            AND sed.s_warehouse IS NOT NULL
+            AND sed.s_warehouse != ''
+            AND (sed.t_warehouse IS NULL OR sed.t_warehouse = '')
+            AND (sed.custom_batch_barcode IS NULL OR sed.custom_batch_barcode = '')
+        """ + date_filters,
+        params,
+        as_dict=True,
+    )
+    return {row["barcode"] for row in rows if row.get("barcode")}
+
+
 def reconcile_all_batch_barcodes_job(start_date=None, end_date=None):
     """
     Background job: find submitted Stock Entry Detail rows (optionally filtered
-    by the parent Stock Entry posting_date within [start_date, end_date]) where
-    `custom_transaction_barcode` matches an existing Batch Barcode Tracker but
-    `custom_batch_barcode` was left empty/NULL, and reconcile those trackers.
+    by the parent Stock Entry creation date within [start_date, end_date]) and
+    reconcile matching Batch Barcode Trackers. Posting date is ignored because
+    it can be backdated to before the tracker existed.
+
+    Candidates come from:
+    1. `custom_transaction_barcode` matching an existing tracker while
+       `custom_batch_barcode` was left empty/NULL.
+    2. Unsold trackers whose item, batch, qty (and warehouse) match a
+       consume-only stock entry row — used when the pack is always consumed
+       in full but the typed transaction barcode does not match the tracker.
 
     Reuses BatchBarcodeTracker.reconcile_stock_entries() per tracker, which is
-    idempotent (skips Stock Entries already recorded on the tracker).
+    idempotent (skips Stock Entries already recorded on the tracker). Older
+    trackers are processed first so two packs of the same qty claim different rows.
     """
     if not frappe.db.has_column("Stock Entry Detail", "custom_transaction_barcode"):
         frappe.log_error(
@@ -470,50 +553,24 @@ def reconcile_all_batch_barcodes_job(start_date=None, end_date=None):
         )
         return {"processed_count": 0, "skipped_count": 0}
 
-    date_filters = ""
-    params = []
+    date_filters, params = _reconcile_date_filters(start_date, end_date)
 
-    if start_date:
-        date_filters += " AND se.posting_date >= %s"
-        params.append(start_date)
-    if end_date:
-        date_filters += " AND se.posting_date <= %s"
-        params.append(end_date)
+    valid_barcodes = _candidate_barcodes_from_transaction_barcode(date_filters, params)
+    valid_barcodes |= _candidate_barcodes_from_item_batch_qty(date_filters, params)
 
-    rows = frappe.db.sql(
-        """
-        SELECT
-            sed.name,
-            sed.parent,
-            sed.custom_transaction_barcode
-        FROM `tabStock Entry Detail` sed
-        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
-        WHERE sed.docstatus = 1
-            AND sed.custom_transaction_barcode IS NOT NULL
-            AND sed.custom_transaction_barcode != ''
-            AND (sed.custom_batch_barcode IS NULL OR sed.custom_batch_barcode = '')
-        """ + date_filters + """
-        ORDER BY sed.creation ASC
-        """,
-        params,
-        as_dict=True,
-    )
-
-    candidate_barcodes = {row["custom_transaction_barcode"] for row in rows if row.get("custom_transaction_barcode")}
-    if not candidate_barcodes:
+    if not valid_barcodes:
         return {"processed_count": 0, "skipped_count": 0}
 
-    valid_barcodes = set(
-        frappe.get_all(
-            "Batch Barcode Tracker",
-            filters={"barcode": ["in", list(candidate_barcodes)]},
-            pluck="barcode",
-        )
+    ordered = frappe.get_all(
+        "Batch Barcode Tracker",
+        filters={"name": ["in", list(valid_barcodes)]},
+        pluck="name",
+        order_by="creation asc",
     )
 
     results = {"processed": [], "skipped": [], "processed_count": 0, "skipped_count": 0}
 
-    for barcode in sorted(valid_barcodes):
+    for barcode in ordered:
         try:
             tracker = frappe.get_doc("Batch Barcode Tracker", barcode)
             result = tracker.reconcile_stock_entries(
