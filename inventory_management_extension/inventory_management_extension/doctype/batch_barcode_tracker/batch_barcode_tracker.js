@@ -17,13 +17,14 @@ function prompt_date_range_and_enqueue(frm) {
 		fields: [
 			{
 				fieldname: "start_date",
-				label: __("Start Date"),
+				label: __("Stock Entry Created From"),
 				fieldtype: "Date",
-				reqd: 1
+				reqd: 1,
+				description: __("Uses when the Stock Entry was created, not posting date.")
 			},
 			{
 				fieldname: "end_date",
-				label: __("End Date"),
+				label: __("Stock Entry Created To"),
 				fieldtype: "Date",
 				reqd: 1
 			}
@@ -51,13 +52,13 @@ function enqueue_reconcile_all(frm, start_date, end_date) {
 			if (r.message && r.message.job_id) {
 				frappe.msgprint({
 					title: __("Reconciliation Queued"),
-					message: __("Background reconciliation job {0} has been queued for Stock Entries posted between {1} and {2}.", [r.message.job_id, start_date, end_date]),
+					message: __("Background reconciliation job {0} has been queued for Stock Entries created between {1} and {2}.", [r.message.job_id, start_date, end_date]),
 					indicator: "blue"
 				});
 			} else {
 				frappe.msgprint({
 					title: __("Reconciliation Queued"),
-					message: __("Background reconciliation job has been queued for Stock Entries posted between {0} and {1}.", [start_date, end_date]),
+					message: __("Background reconciliation job has been queued for Stock Entries created between {0} and {1}.", [start_date, end_date]),
 					indicator: "blue"
 				});
 			}
