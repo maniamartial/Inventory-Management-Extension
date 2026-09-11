@@ -1,4 +1,5 @@
 import frappe
+from frappe.utils import flt
 import random
 import barcode
 from barcode.writer import ImageWriter
@@ -38,6 +39,9 @@ def before_save(doc, method):
 
             # Manufacture: only generate for finished item
             if doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
+                continue
+            
+            if doc.stock_entry_type == "Material Transfer for Manufacture":
                 continue
 
             # Repack: only generate for items being added (target warehouse exists)
@@ -105,17 +109,19 @@ def on_submit(doc, method):
         for item in doc.items:
             if item.custom_transaction_barcode:
                 create_barcode_tracker(
-                    item.item_code, 
-                    item.custom_transaction_barcode, 
-                    item.batch_no, 
+                    item.item_code,
+                    item.custom_transaction_barcode,
+                    item.batch_no,
                     item.qty,
-                    item.t_warehouse, 
-                    item.custom_barcode_image, 
+                    item.t_warehouse,
+                    item.custom_barcode_image,
                     reference_document_type=doc.doctype,
                     reference_document_name=doc.name,
                     item_row=item,
                 )
                 update_serial_and_batch(doc, item)
+        # Tick Batch Barcode Reconciliation new_barcodes where this barcode was created
+        _tick_new_barcodes_tracker_created(doc)
     
     # Handle Repack: mark source barcodes as sold, create new tracker for target
     elif doc.stock_entry_type == "Repack":
@@ -124,10 +130,14 @@ def on_submit(doc, method):
     # Handle Material Transfer: mark source barcodes as sold, create new tracker for target
     elif doc.stock_entry_type == "Material Transfer":
         handle_material_transfer(doc)
+        
+    elif doc.stock_entry_type == "Material Transfer for Manufacture":
+        handle_material_transfer(doc)
     
     # Handle Material Issue: mark selected barcodes as sold, no new tracker
     elif doc.stock_entry_type == "Material Issue":
         handle_material_issue(doc)
+        _tick_missing_barcodes_issued(doc)
     
     # Handle other stock entry types based on source/target warehouse
     else:
@@ -373,6 +383,123 @@ def update_serial_and_batch(doc, item):
             row.custom_barcode = item.custom_transaction_barcode
 
         bundle_doc.save(ignore_permissions=True)
+
+
+def _tick_new_barcodes_tracker_created(ste_doc):
+	"""After Material Receipt submit: tick new_barcodes row and add Items row (same as scan) for each barcode created."""
+	barcodes_created = [item.custom_transaction_barcode for item in (ste_doc.items or []) if item.custom_transaction_barcode]
+	if not barcodes_created:
+		return
+	# Batch Barcode Tracker name usually equals transactional barcode (autoname field:barcode)
+	for barcode in set(barcodes_created):
+		reconciliations = frappe.db.sql(
+			"""SELECT DISTINCT parent FROM `tabAdditional Batch Barcode`
+			   WHERE parenttype = 'Batch Barcode Reconciliation' AND barcode = %s""",
+			(barcode,),
+			as_dict=True,
+		)
+		for r in reconciliations:
+			doc = frappe.get_doc("Batch Barcode Reconciliation", r.parent)
+			existing_bc = {item.batch_barcode for item in (doc.items or []) if item.batch_barcode}
+			for row in (doc.new_barcodes or []):
+				if row.barcode == barcode:
+					row.batch_barcode_tracker_created = 1
+			# Append item line like barcode scan (tracker name as batch_barcode link)
+			tracker_name = barcode
+			if frappe.db.exists("Batch Barcode Tracker", tracker_name):
+				tracker = frappe.db.get_value(
+					"Batch Barcode Tracker",
+					tracker_name,
+					["name", "barcode", "item_code", "batch", "warehouse", "qty", "uom"],
+					as_dict=True,
+				)
+				if tracker and tracker.name not in existing_bc:
+					# Match SE line for qty/warehouse from this submission
+					se_item = next(
+						(i for i in (ste_doc.items or []) if i.custom_transaction_barcode == barcode),
+						None,
+					)
+					qty = flt(se_item.qty) if se_item else flt(tracker.get("qty"))
+					wh = (se_item.t_warehouse if se_item and se_item.t_warehouse else None) or tracker.get("warehouse")
+					doc.append(
+						"items",
+						{
+							"barcode": tracker.get("barcode") or barcode,
+							"item_code": tracker.item_code,
+							"warehouse": wh,
+							"batch_no": tracker.batch,
+							"batch_barcode": tracker.name,
+							"qty": qty,
+							"stock_uom": tracker.get("uom"),
+							"use_serial_batch_fields": 1,
+						},
+					)
+			doc.flags.ignore_validate_update_after_submit = True
+			doc.save(ignore_permissions=True)
+
+
+def _parse_barcode_link_list(barcode_list_json):
+	"""Parse custom_missing_barcode_list (JSON array or newline/comma-separated)."""
+	if not barcode_list_json:
+		return []
+	if isinstance(barcode_list_json, (list, tuple, set)):
+		return list(barcode_list_json)
+	s = str(barcode_list_json).strip()
+	if not s:
+		return []
+	try:
+		parsed = frappe.parse_json(s)
+		if isinstance(parsed, list):
+			return [str(x) for x in parsed]
+	except Exception:
+		pass
+	# Fallback: comma or newline separated
+	parts = []
+	for part in s.replace("\n", ",").split(","):
+		p = part.strip()
+		if p:
+			parts.append(p)
+	return parts
+
+
+def _tick_missing_barcodes_issued(ste_doc):
+	"""After Material Issue submit: tick batch_barcode_tracker_update on reconciliation (from Stock Entry custom fields)."""
+	recon_name = ste_doc.get("custom_batch_barcode_reconciliation") if hasattr(
+		ste_doc, "get"
+	) else None
+	if not recon_name:
+		recon_name = frappe.db.get_value(
+			"Stock Entry", ste_doc.name, "custom_batch_barcode_reconciliation"
+		)
+	barcode_list_json = ste_doc.get("custom_missing_barcode_list") if hasattr(
+		ste_doc, "get"
+	) else None
+	if not barcode_list_json:
+		barcode_list_json = frappe.db.get_value(
+			"Stock Entry", ste_doc.name, "custom_missing_barcode_list"
+		)
+	if not recon_name or not barcode_list_json:
+		return
+	barcode_list = _parse_barcode_link_list(barcode_list_json)
+	barcode_set = set(barcode_list)
+	if not barcode_set:
+		return
+	try:
+		doc = frappe.get_doc("Batch Barcode Reconciliation", recon_name)
+	except frappe.DoesNotExistError:
+		frappe.log_error(
+			f"Batch Barcode Reconciliation {recon_name} not found for Stock Entry {ste_doc.name}",
+			"Tick Missing Barcodes",
+		)
+		return
+	for row in (doc.missing_batch_barcodes or []):
+		if not row.barcode:
+			continue
+		# Link field may be compared as string name
+		if str(row.barcode) in barcode_set or row.barcode in barcode_set:
+			row.batch_barcode_tracker_update = 1
+	doc.flags.ignore_validate_update_after_submit = True
+	doc.save(ignore_permissions=True)
 
 
 def latest_batch(batch_prefix):

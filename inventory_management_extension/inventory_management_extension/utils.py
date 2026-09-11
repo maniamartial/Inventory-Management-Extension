@@ -296,6 +296,9 @@ def create_barcode_tracker(
     are taken from the source document. Use transaction_type="Purchased" for
     Purchase Receipt, "Repacked" for Repack target, "Created" for Manufacture
     or Material Receipt, etc.
+
+    Used by Purchase Receipt, Stock Entry (transaction barcode), and other vouchers.
+    Reloads the doc after insert before submit to avoid TimestampMismatchError.
     """
     image = barcode_image if barcode_image else generate_image_for_barcode(barcode)
 
@@ -361,8 +364,11 @@ def create_barcode_tracker(
         })
 
     barcode_tracker.insert(ignore_permissions=True)
+    # Reload before submit: insert() may update `modified` in DB (hooks, child rows);
+    # stale in-memory doc causes TimestampMismatchError on submit().
+    barcode_tracker.reload()
     barcode_tracker.submit()
-    frappe.db.commit()
+    # Do not frappe.db.commit() here — parent voucher (PR, Stock Entry, etc.) owns the transaction.
 
     return barcode_tracker
 
