@@ -1,13 +1,21 @@
 frappe.ui.form.on('Stock Entry', {
-    
     custom_split_items: function(frm) {
-      split_iems_(frm);
+        split_iems_(frm);
     },
 
     refresh: function(frm) {
         frm.add_custom_button(__('Split Items'), function() {
             split_iems_(frm);
         });
+        setup_batch_barcode_filters(frm);
+    },
+
+    items_add: function(frm) {
+        setup_batch_barcode_filters(frm);
+    },
+
+    before_save: function(frm) {
+        validate_no_duplicate_batch_barcodes(frm.doc.items || [], 'custom_batch_barcode');
     }
 });
 
@@ -19,91 +27,151 @@ frappe.ui.form.on('Stock Entry Detail', {
         print(frm, cdt, cdn);
     },
     batch_no: function(frm, cdt, cdn) {
-        setup_batch_barcode_filter(frm, cdt, cdn);
+        setup_batch_barcode_filters(frm);
+    },
+    s_warehouse: function(frm, cdt, cdn) {
+        setup_batch_barcode_filters(frm);
+    },
+    item_code: function(frm, cdt, cdn) {
+        setup_batch_barcode_filters(frm);
     },
     custom_batch_barcode: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         if (row.custom_batch_barcode) {
-            // Auto-fill item details and quantity from batch barcode tracker
+            let duplicate = (frm.doc.items || []).some(
+                r => r.name !== cdn && r.custom_batch_barcode === row.custom_batch_barcode
+            );
+            if (duplicate) {
+                frappe.msgprint(__('Batch Barcode {0} is already selected on another row.', [row.custom_batch_barcode]));
+                frappe.model.set_value(cdt, cdn, 'custom_batch_barcode', '');
+                return;
+            }
+
             frappe.call({
-                method: 'frappe.client.get',
+                method: 'inventory_management_extension.inventory_management_extension.utils.get_batch_barcode_pack_details',
                 args: {
-                    doctype: 'Batch Barcode Tracker',
-                    name: row.custom_batch_barcode
+                    barcode: row.custom_batch_barcode
                 },
                 callback: function(r) {
-                    if (r.message) {
-                        // Auto-fill item code if not already set
-                        if (!row.item_code) {
-                            frappe.model.set_value(cdt, cdn, 'item_code', r.message.item_code);
-                        }
-                        // Auto-fill quantity from batch barcode tracker
-                        if (r.message.qty) {
-                            frappe.model.set_value(cdt, cdn, 'qty', r.message.qty);
-                        }
+                    if (!r.message) {
+                        return;
                     }
+                    let pack = r.message;
+                    if (pack.sold) {
+                        frappe.msgprint(__('This barcode is already sold/consumed.'));
+                        frappe.model.set_value(cdt, cdn, 'custom_batch_barcode', '');
+                        return;
+                    }
+                    if (row.item_code && pack.item_code && row.item_code !== pack.item_code) {
+                        frappe.msgprint(__(
+                            'Batch Barcode {0} belongs to {1}, not {2}.',
+                            [pack.barcode, pack.item_code, row.item_code]
+                        ));
+                        frappe.model.set_value(cdt, cdn, 'custom_batch_barcode', '');
+                        return;
+                    }
+                    if (!row.item_code && pack.item_code) {
+                        frappe.model.set_value(cdt, cdn, 'item_code', pack.item_code);
+                    }
+
+                    // Keep whatever UOM the user already chose (stock or transaction).
+                    // Only fill qty for that UOM; conversion is validated on save.
+                    let chosen_uom = row.uom || pack.transaction_uom || pack.stock_uom;
+                    let qty_for_uom = null;
+                    let conversion = pack.conversion_factor || 1;
+
+                    if (chosen_uom && pack.transaction_uom && chosen_uom === pack.transaction_uom) {
+                        qty_for_uom = pack.transaction_qty;
+                        conversion = pack.conversion_factor || 1;
+                    } else if (chosen_uom && pack.stock_uom && chosen_uom === pack.stock_uom) {
+                        qty_for_uom = pack.stock_qty;
+                        conversion = 1;
+                    } else if (!row.uom) {
+                        chosen_uom = pack.stock_uom || pack.uom;
+                        qty_for_uom = pack.stock_qty || pack.qty;
+                        conversion = 1;
+                        if (chosen_uom) {
+                            frappe.model.set_value(cdt, cdn, 'uom', chosen_uom);
+                        }
+                    } else {
+                        qty_for_uom = pack.stock_qty || pack.qty;
+                    }
+
+                    if (conversion) {
+                        frappe.model.set_value(cdt, cdn, 'conversion_factor', conversion);
+                    }
+                    if (qty_for_uom) {
+                        frappe.model.set_value(cdt, cdn, 'qty', qty_for_uom);
+                    }
+                    if (pack.batch) {
+                        frappe.model.set_value(cdt, cdn, 'batch_no', pack.batch);
+                        frappe.model.set_value(cdt, cdn, 'use_serial_batch_fields', 1);
+                    }
+                    setup_batch_barcode_filters(frm);
                 }
             });
+        } else {
+            setup_batch_barcode_filters(frm);
         }
     }
 });
 
-frappe.ui.form.on('Stock Entry', {
-    refresh: function(frm) {
-        setup_batch_barcode_filters(frm);
-    },
-    items_add: function(frm) {
-        setup_batch_barcode_filters(frm);
+function get_selected_batch_barcodes(rows, current_cdn, fieldname) {
+    return (rows || [])
+        .filter(r => r.name !== current_cdn && r[fieldname])
+        .map(r => r[fieldname]);
+}
+
+function validate_no_duplicate_batch_barcodes(rows, fieldname) {
+    let seen = {};
+    let duplicates = [];
+    (rows || []).forEach(row => {
+        let barcode = row[fieldname];
+        if (!barcode) return;
+        if (seen[barcode]) {
+            if (!duplicates.includes(barcode)) {
+                duplicates.push(barcode);
+            }
+        } else {
+            seen[barcode] = true;
+        }
+    });
+    if (duplicates.length) {
+        frappe.throw(__(
+            'Batch Barcode(s) selected more than once: {0}',
+            [duplicates.join(', ')]
+        ));
     }
-});
+}
 
 function setup_batch_barcode_filters(frm) {
     if (!frm.fields_dict.items) return;
-    
-    frm.fields_dict.items.grid.get_field("custom_batch_barcode").get_query = function(doc, cdt, cdn) {
+
+    frm.set_query('custom_batch_barcode', 'items', function(doc, cdt, cdn) {
         let row = locals[cdt][cdn];
         let filters = {
-            "sold": 0
+            sold: 0
         };
-        
+
         if (row.batch_no) {
-            filters["batch"] = row.batch_no;
+            filters.batch = row.batch_no;
         }
-        
         if (row.item_code) {
-            filters["item_code"] = row.item_code;
+            filters.item_code = row.item_code;
         }
-        
-        // Filter by source warehouse so only barcodes in that warehouse are shown
         if (row.s_warehouse) {
-            filters["warehouse"] = row.s_warehouse;
+            filters.warehouse = row.s_warehouse;
         }
-        
-        return {
-            filters: filters
-        };
-    };
-}
 
-function setup_batch_barcode_filter(frm, cdt, cdn) {
-    let row = locals[cdt][cdn];
-    if (row.batch_no) {
-        frm.fields_dict.items.grid.get_field("custom_batch_barcode").get_query = function(doc, cdt, cdn) {
-            let current_row = locals[cdt][cdn];
-            let filters = {
-                "batch": current_row.batch_no || row.batch_no,
-                "item_code": current_row.item_code || row.item_code,
-                "sold": 0
-            };
-            if (current_row.s_warehouse) {
-                filters["warehouse"] = current_row.s_warehouse;
-            }
-            return { filters: filters };
-        };
-        frm.refresh_field('items');
-    }
-}
+        // Hide barcodes already picked on other rows (same as Pick List)
+        let selected = get_selected_batch_barcodes(doc.items, cdn, 'custom_batch_barcode');
+        if (selected.length) {
+            filters.name = ['not in', selected];
+        }
 
+        return { filters: filters };
+    });
+}
 
 function split_iems_(frm){
     let has_split = frm.doc.items.some(item => item.custom_split_no > 1);
@@ -130,8 +198,6 @@ function split_iems_(frm){
     }
 }
 
-
-
 function barcode_image(frm, cdt, cdn){
     let item = locals[cdt][cdn];
     if (item.custom_transaction_barcode) {
@@ -139,8 +205,6 @@ function barcode_image(frm, cdt, cdn){
             method: "inventory_management_extension.inventory_management_extension.utils.generate_image_for_barcode",
             args: {
                 barcode: item.custom_transaction_barcode,
-                // width: 200,
-                // height: 100
             },
             callback: function(r) {
                 if (r.message) {
@@ -160,7 +224,6 @@ function print(frm, cdt, cdn){
             return;
         }
 
-        // Open a new print window
         let printWindow = window.open('', '_blank');
         printWindow.document.open();
         printWindow.document.write(`
@@ -170,9 +233,8 @@ function print(frm, cdt, cdn){
                     body {
                         text-align: center;
                         font-family: Arial, sans-serif;
-                        width:8cm,
+                        width:8cm;
                         height: 10cm;
-
                     }
                     img {
                         max-width: 100%;

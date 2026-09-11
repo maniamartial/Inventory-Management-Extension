@@ -38,6 +38,7 @@ def on_submit(doc, method=None):
                 reference_document_type=doc.doctype,
                 reference_document_name=doc.name,
                 transaction_type="Purchased",
+                item_row=item,
             )
             update_serial_and_batch(doc, item)
 

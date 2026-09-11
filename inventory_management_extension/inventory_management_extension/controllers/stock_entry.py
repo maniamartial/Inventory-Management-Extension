@@ -8,6 +8,7 @@ from inventory_management_extension.inventory_management_extension.utils import 
     mark_barcode_as_sold,
     reverse_barcode_transactions_for_doc,
     update_barcode_warehouse_and_add_transfer,
+    validate_batch_barcode_qty_uom,
 )
 
 def calculate_ean13_check_digit(ean12):
@@ -28,7 +29,9 @@ def generate_ean13():
 
 
 def before_save(doc, method):
-    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack", "Material Transfer", "Material Transfer for Manufacture"]:
+    validate_consumed_batch_barcodes(doc)
+
+    if doc.stock_entry_type in ["Manufacture", "Material Receipt", "Repack", "Material Transfer"]:
         for item in doc.items:
             # Skip if item doesn't need batch
             if not valiadte_item_has_batch(item.item_code):
@@ -59,6 +62,32 @@ def before_save(doc, method):
         # After assigning barcodes, generate batches
         generate_batch_no(doc)
 
+
+def validate_consumed_batch_barcodes(doc):
+    """
+    For source / consumption rows that pick a Batch Barcode, ensure qty and UOM
+    match the pack (compared in stock UOM so 50 txn = 5 stock still passes).
+    """
+    for item in doc.items:
+        batch_barcode = item.get("custom_batch_barcode")
+        if not batch_barcode:
+            continue
+        # Target-only rows create packs; nothing to validate against an existing pack
+        if item.t_warehouse and not item.s_warehouse:
+            continue
+
+        validate_batch_barcode_qty_uom(
+            barcode=batch_barcode,
+            item_code=item.item_code,
+            qty=item.qty,
+            uom=item.uom,
+            stock_uom=item.stock_uom,
+            conversion_factor=item.conversion_factor,
+            stock_qty=item.get("transfer_qty"),
+            context=f"{doc.doctype} row {item.idx} ({item.item_code})",
+            require_full_pack=True,
+        )
+
                 
 def update_barcode_on_item(item_code, barcode):
     item_doc = frappe.get_doc("Item", item_code)
@@ -87,7 +116,8 @@ def on_submit(doc, method):
                     item.t_warehouse,
                     item.custom_barcode_image,
                     reference_document_type=doc.doctype,
-                    reference_document_name=doc.name
+                    reference_document_name=doc.name,
+                    item_row=item,
                 )
                 update_serial_and_batch(doc, item)
         # Tick Batch Barcode Reconciliation new_barcodes where this barcode was created
@@ -187,6 +217,7 @@ def handle_manufacture(doc):
                 reference_document_type=doc.doctype,
                 reference_document_name=doc.name,
                 transaction_type="Created",
+                item_row=item,
             )
             update_serial_and_batch(doc, item)
 
@@ -234,6 +265,7 @@ def handle_repack(doc):
                 reference_document_type=doc.doctype,
                 reference_document_name=doc.name,
                 transaction_type="Repacked",
+                item_row=item,
             )
             update_serial_and_batch(doc, item)
 
@@ -307,6 +339,7 @@ def handle_other_stock_entry_types(doc):
                     reference_document_type=doc.doctype,
                     reference_document_name=doc.name,
                     transaction_type="Created",
+                    item_row=item,
                 )
                 update_serial_and_batch(doc, item)
 
@@ -331,6 +364,7 @@ def handle_other_stock_entry_types(doc):
                     reference_document_type=doc.doctype,
                     reference_document_name=doc.name,
                     transaction_type="Created",
+                    item_row=item,
                 )
                 update_serial_and_batch(doc, item)
                 

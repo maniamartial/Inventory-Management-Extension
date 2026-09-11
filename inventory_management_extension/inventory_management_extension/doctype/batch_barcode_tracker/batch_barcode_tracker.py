@@ -11,6 +11,64 @@ from inventory_management_extension.inventory_management_extension.utils import 
 
 
 class BatchBarcodeTracker(Document):
+	def validate(self):
+		self._set_uom_and_qty_totals()
+
+	def _set_uom_and_qty_totals(self):
+		"""
+		Keep Stock UOM and Transaction UOM totals consistent.
+
+		- `uom` / `qty` = Stock UOM / Stock Qty
+		- `transaction_uom` / `transaction_qty` = UOM used on the creating document
+		- `conversion_factor`: 1 Transaction UOM = conversion_factor × Stock UOM
+		"""
+		if self.item_code and not self.uom:
+			self.uom = frappe.db.get_value("Item", self.item_code, "stock_uom")
+
+		if not self.transaction_uom:
+			self.transaction_uom = self.uom
+
+		conversion_factor = flt(self.conversion_factor)
+		if conversion_factor <= 0:
+			conversion_factor = 1.0
+			if (
+				self.item_code
+				and self.transaction_uom
+				and self.uom
+				and self.transaction_uom != self.uom
+			):
+				cf = frappe.db.get_value(
+					"UOM Conversion Detail",
+					{"parent": self.item_code, "uom": self.transaction_uom},
+					"conversion_factor",
+				)
+				if cf:
+					conversion_factor = flt(cf)
+			self.conversion_factor = conversion_factor
+		else:
+			self.conversion_factor = conversion_factor
+
+		transaction_qty = flt(self.transaction_qty)
+		stock_qty = flt(self.qty)
+
+		# Prefer deriving the missing side from the other using conversion.
+		if transaction_qty and not stock_qty:
+			self.qty = transaction_qty * self.conversion_factor
+		elif stock_qty and not transaction_qty:
+			self.transaction_qty = (
+				stock_qty / self.conversion_factor if self.conversion_factor else stock_qty
+			)
+		elif transaction_qty and stock_qty:
+			# Keep both; if they disagree, trust transaction_qty × conversion
+			# when conversion is set and UOMs differ.
+			expected_stock = transaction_qty * self.conversion_factor
+			if abs(expected_stock - stock_qty) > 0.00001 and self.transaction_uom != self.uom:
+				self.qty = expected_stock
+		elif stock_qty and not self.transaction_qty:
+			self.transaction_qty = stock_qty
+			self.transaction_uom = self.transaction_uom or self.uom
+			self.conversion_factor = self.conversion_factor or 1
+
 	@frappe.whitelist()
 	def reconcile_stock_entries(self, start_date=None, end_date=None):
 		"""
@@ -121,16 +179,21 @@ class BatchBarcodeTracker(Document):
 		Consume-only Stock Entry rows with the same item, batch, and qty.
 		Does not require the transaction barcode to equal this tracker.
 
+		Qty match uses Stock Qty (`qty`) against SED transfer_qty / stock qty,
+		and also Transaction Qty against SED.qty for legacy / mistyped rows.
+
 		Only Stock Entries created after this tracker are considered. A
 		backdated posting_date before the tracker exists is ignored.
 		"""
 		batch_no = self.lot_no if cint(self.is_lot) else self.batch
-		if not self.item_code or not batch_no or flt(self.qty) == 0:
+		stock_qty = flt(self.qty)
+		transaction_qty = flt(self.transaction_qty) or stock_qty
+		if not self.item_code or not batch_no or (stock_qty == 0 and transaction_qty == 0):
 			return []
 
 		date_filters, date_params = self._date_filter_sql(start_date, end_date)
 		created_sql, created_params = self._created_after_tracker_sql()
-		params = [self.item_code, batch_no, flt(self.qty)]
+		params = [self.item_code, batch_no, stock_qty, transaction_qty]
 
 		warehouse_filter = ""
 		if self.warehouse:
@@ -153,7 +216,10 @@ class BatchBarcodeTracker(Document):
 			WHERE sed.docstatus = 1
 				AND sed.item_code = %s
 				AND sed.batch_no = %s
-				AND ABS(sed.qty - %s) < 0.00001
+				AND (
+					ABS(IFNULL(NULLIF(sed.transfer_qty, 0), sed.qty) - %s) < 0.00001
+					OR ABS(sed.qty - %s) < 0.00001
+				)
 				AND sed.s_warehouse IS NOT NULL
 				AND sed.s_warehouse != ''
 				AND (sed.t_warehouse IS NULL OR sed.t_warehouse = '')

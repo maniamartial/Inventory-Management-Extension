@@ -48,6 +48,9 @@ def get_package_details_by_barcode(barcode):
 			"warehouse_code": barcode_tracker.warehouse,
 			"qty": barcode_tracker.qty,
 			"uom": barcode_tracker.uom,
+			"transaction_qty": barcode_tracker.get("transaction_qty"),
+			"transaction_uom": barcode_tracker.get("transaction_uom"),
+			"conversion_factor": barcode_tracker.get("conversion_factor"),
 			"sold": barcode_tracker.sold,
 			"barcode": barcode_tracker.barcode
 		}

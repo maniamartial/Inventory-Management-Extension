@@ -195,10 +195,9 @@ frappe.ui.form.on('Pick List', {
                 }
         
                 frappe.call({
-                    method: 'frappe.client.get',
+                    method: 'inventory_management_extension.inventory_management_extension.utils.get_batch_barcode_pack_details',
                     args: {
-                        doctype: 'Batch Barcode Tracker',
-                        name: barcode
+                        barcode: barcode
                     },
                     callback: function(r) {
                         if (r.message) {
@@ -219,8 +218,13 @@ frappe.ui.form.on('Pick List', {
                             row.item_code = data.item_code;
                             row.batch_no = data.batch;
                             row.barcode = data.name;
-                            row.qty = data.qty;
-                            row.uom = data.uom || 'Nos';
+                            // Either UOM is fine; default to stock UOM. User can switch
+                            // to transaction UOM — save validates qty via conversion.
+                            row.uom = data.stock_uom || data.uom || 'Nos';
+                            row.stock_uom = data.stock_uom || data.uom || row.uom;
+                            row.qty = data.stock_qty || data.qty;
+                            row.stock_qty = data.stock_qty || data.qty;
+                            row.conversion_factor = 1;
                             row.warehouse = data.warehouse;
         
                             frm.refresh_field('custom_items');
@@ -238,17 +242,33 @@ frappe.ui.form.on('Pick List', {
 frappe.ui.form.on('Pick List Extension', {
     barcode: function(frm, cdt, cdn) {
         let child = locals[cdt][cdn];
+        if (!child.barcode) {
+            return;
+        }
         frappe.call({
-            method: 'frappe.client.get_value',
+            method: 'inventory_management_extension.inventory_management_extension.utils.get_batch_barcode_pack_details',
             args: {
-                doctype: 'Batch Barcode Tracker',
-                filters: { barcode: child.barcode },
-                fieldname: ['qty']
+                barcode: child.barcode
             },
             callback: function(response) {
                 if (response.message) {
-                    let qty = response.message.qty;
-                    frappe.model.set_value(cdt, cdn, 'qty', qty);
+                    let pack = response.message;
+                    if (pack.sold) {
+                        frappe.msgprint(__('This barcode is already sold/consumed.'));
+                        frappe.model.set_value(cdt, cdn, 'barcode', '');
+                        return;
+                    }
+                    frappe.model.set_value(cdt, cdn, 'qty', pack.stock_qty || pack.qty);
+                    frappe.model.set_value(cdt, cdn, 'uom', pack.stock_uom || pack.uom);
+                    frappe.model.set_value(cdt, cdn, 'stock_uom', pack.stock_uom || pack.uom);
+                    frappe.model.set_value(cdt, cdn, 'conversion_factor', 1);
+                    frappe.model.set_value(cdt, cdn, 'stock_qty', pack.stock_qty || pack.qty);
+                    if (pack.batch) {
+                        frappe.model.set_value(cdt, cdn, 'batch_no', pack.batch);
+                    }
+                    if (pack.warehouse) {
+                        frappe.model.set_value(cdt, cdn, 'warehouse', pack.warehouse);
+                    }
                 } else {
                     frappe.msgprint(__('No such barcode found'));
                 }

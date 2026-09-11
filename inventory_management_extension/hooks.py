@@ -46,6 +46,7 @@ app_license = "agpl-3.0"
 doctype_js = {"Delivery Note" : "public/js/delivery_note.js",
               "Pick List" : "public/js/pack_list.js",
               "Purchase Receipt" : "public/js/purchase_receipt.js",
+              "Subcontracting Receipt" : "public/js/subcontracting_receipt.js",
               "Stock Entry" : "public/js/stock_entry.js",}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -140,6 +141,12 @@ fixtures= [
                  "Purchase Receipt Item-custom_certification",
                  "Batch-custom_certification",
                  "Stock Entry Detail-custom_batch_barcode",
+                 "Subcontracting Receipt-custom_split_items",
+                 "Subcontracting Receipt Item-custom_barcode_image",
+                 "Subcontracting Receipt Item-custom_print",
+                 "Subcontracting Receipt Item-custom_split_no",
+                 "Subcontracting Receipt Item-custom_transaction_barcode",
+                 "Subcontracting Receipt Supplied Item-custom_batch_barcode",
                  )
             ]
         ]
@@ -231,6 +238,11 @@ doc_events = {
         "before_save": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.before_save",
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_submit",
         "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.purchase_receipt.on_cancel",
+    },
+    "Subcontracting Receipt": {
+        "before_save": "inventory_management_extension.inventory_management_extension.controllers.subcontracting_receipt.before_save",
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.subcontracting_receipt.on_submit",
+        "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.subcontracting_receipt.on_cancel",
     },
     "Delivery Note":{
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
