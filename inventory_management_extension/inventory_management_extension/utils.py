@@ -1,6 +1,6 @@
 
 import frappe 
-from frappe.utils import flt
+from frappe.utils import flt, cint
 from frappe import _
 from frappe.model.document import Document
 from barcode import Code128
@@ -8,7 +8,266 @@ from barcode.writer import ImageWriter
 import frappe
 from frappe.utils.file_manager import save_file
 import re
-from frappe.utils import flt
+from frappe.utils import flt, cint
+
+
+def extract_uom_qty_from_item(item):
+    """
+    Pull transaction / stock UOM quantities from a Stock Entry Detail or
+    Purchase Receipt Item style row.
+
+    Returns dict with transaction_qty, transaction_uom, conversion_factor,
+    stock_qty (qty), stock_uom (uom).
+    """
+    stock_uom = getattr(item, "stock_uom", None) or frappe.db.get_value(
+        "Item", item.item_code, "stock_uom"
+    )
+    transaction_uom = getattr(item, "uom", None) or stock_uom
+    conversion_factor = flt(getattr(item, "conversion_factor", None) or 0)
+    if conversion_factor <= 0:
+        conversion_factor = 1.0
+        if transaction_uom and stock_uom and transaction_uom != stock_uom:
+            cf = frappe.db.get_value(
+                "UOM Conversion Detail",
+                {"parent": item.item_code, "uom": transaction_uom},
+                "conversion_factor",
+            )
+            if cf:
+                conversion_factor = flt(cf)
+
+    transaction_qty = flt(getattr(item, "qty", None) or 0)
+    stock_qty = flt(
+        getattr(item, "transfer_qty", None)
+        or getattr(item, "stock_qty", None)
+        or 0
+    )
+    if not stock_qty and transaction_qty:
+        stock_qty = transaction_qty * conversion_factor
+    if not transaction_qty and stock_qty and conversion_factor:
+        transaction_qty = stock_qty / conversion_factor
+
+    return {
+        "transaction_qty": transaction_qty,
+        "transaction_uom": transaction_uom,
+        "conversion_factor": conversion_factor,
+        "qty": stock_qty,
+        "uom": stock_uom,
+    }
+
+
+def get_uom_conversion_factor(item_code, from_uom, to_uom=None):
+    """
+    Conversion factor such that: qty_in_to_uom = qty_in_from_uom * factor
+    when to_uom is the item stock UOM (ERPNext UOM Conversion Detail convention).
+    """
+    stock_uom = to_uom or frappe.db.get_value("Item", item_code, "stock_uom")
+    if not from_uom or not stock_uom or from_uom == stock_uom:
+        return 1.0
+    cf = frappe.db.get_value(
+        "UOM Conversion Detail",
+        {"parent": item_code, "uom": from_uom},
+        "conversion_factor",
+    )
+    return flt(cf) if cf else 1.0
+
+
+def convert_qty_to_stock_uom(item_code, qty, uom, stock_uom=None, conversion_factor=None):
+    """Convert a qty in `uom` into the item's stock UOM."""
+    qty = flt(qty)
+    if not qty:
+        return 0.0
+    stock_uom = stock_uom or frappe.db.get_value("Item", item_code, "stock_uom")
+    if not uom or uom == stock_uom:
+        return qty
+    cf = flt(conversion_factor) if conversion_factor else get_uom_conversion_factor(
+        item_code, uom, stock_uom
+    )
+    return qty * (cf or 1.0)
+
+
+def get_tracker_qty_snapshot(barcode):
+    """Return available pack quantities in both UOMs for a Batch Barcode Tracker."""
+    tracker = frappe.db.get_value(
+        "Batch Barcode Tracker",
+        barcode,
+        [
+            "name",
+            "barcode",
+            "item_code",
+            "qty",
+            "uom",
+            "transaction_qty",
+            "transaction_uom",
+            "conversion_factor",
+            "sold",
+            "batch",
+            "lot_no",
+            "is_lot",
+            "warehouse",
+        ],
+        as_dict=True,
+    )
+    if not tracker:
+        return None
+
+    stock_qty = flt(tracker.qty)
+    stock_uom = tracker.uom or frappe.db.get_value("Item", tracker.item_code, "stock_uom")
+    conversion_factor = flt(tracker.conversion_factor) or 1.0
+    transaction_uom = tracker.transaction_uom or stock_uom
+    transaction_qty = flt(tracker.transaction_qty)
+    if not transaction_qty and stock_qty:
+        transaction_qty = stock_qty / conversion_factor if conversion_factor else stock_qty
+    if not stock_qty and transaction_qty:
+        stock_qty = transaction_qty * conversion_factor
+
+    tracker.update(
+        {
+            "stock_qty": stock_qty,
+            "stock_uom": stock_uom,
+            "transaction_qty": transaction_qty,
+            "transaction_uom": transaction_uom,
+            "conversion_factor": conversion_factor,
+        }
+    )
+    return tracker
+
+
+def validate_batch_barcode_qty_uom(
+    barcode,
+    item_code,
+    qty,
+    uom=None,
+    stock_uom=None,
+    conversion_factor=None,
+    stock_qty=None,
+    context=None,
+    require_full_pack=True,
+):
+    """
+    Ensure a consume / sell / repack row matches the Batch Barcode Tracker pack.
+
+    Either Stock UOM or Transaction UOM may be used on the document row.
+    Validation always compares in Stock UOM using conversion, so e.g.
+    50 Transaction UOM (= 5 Stock UOM) matches a pack with stock_qty=5.
+
+    Throws frappe.ValidationError on mismatch / sold / wrong item.
+    """
+    tracker = get_tracker_qty_snapshot(barcode)
+    if not tracker:
+        frappe.throw(_("Batch Barcode Tracker {0} not found.").format(barcode))
+
+    label = context or barcode
+
+    if cint(tracker.sold):
+        frappe.throw(
+            _("Batch Barcode {0} is already sold/consumed and cannot be used ({1}).").format(
+                barcode, label
+            )
+        )
+
+    if item_code and tracker.item_code and item_code != tracker.item_code:
+        frappe.throw(
+            _("Batch Barcode {0} belongs to {1}, not {2} ({3}).").format(
+                barcode, tracker.item_code, item_code, label
+            )
+        )
+
+    row_stock_qty = flt(stock_qty)
+    if not row_stock_qty:
+        # Use row conversion when provided; otherwise resolve from item UOM map
+        # or from the pack when the chosen UOM is the pack's transaction UOM.
+        cf = flt(conversion_factor) if conversion_factor else 0
+        chosen_uom = uom or stock_uom or tracker.stock_uom
+        if not cf and chosen_uom and tracker.transaction_uom and chosen_uom == tracker.transaction_uom:
+            cf = flt(tracker.conversion_factor) or 1.0
+        row_stock_qty = convert_qty_to_stock_uom(
+            item_code or tracker.item_code,
+            qty,
+            chosen_uom,
+            stock_uom=stock_uom or tracker.stock_uom,
+            conversion_factor=cf or None,
+        )
+
+    available_stock = flt(tracker.stock_qty)
+    if available_stock <= 0 and flt(tracker.transaction_qty) > 0:
+        available_stock = convert_qty_to_stock_uom(
+            tracker.item_code,
+            tracker.transaction_qty,
+            tracker.transaction_uom,
+            stock_uom=tracker.stock_uom,
+            conversion_factor=tracker.conversion_factor,
+        )
+
+    # Exact match on either stock side or transaction side is enough
+    txn_match = False
+    if uom and tracker.transaction_uom and uom == tracker.transaction_uom:
+        txn_match = abs(flt(qty) - flt(tracker.transaction_qty)) < 0.00001
+
+    stock_uom_match = False
+    if uom and tracker.stock_uom and uom == tracker.stock_uom:
+        stock_uom_match = abs(flt(qty) - available_stock) < 0.00001
+
+    stock_match = abs(row_stock_qty - available_stock) < 0.00001
+
+    if require_full_pack and not (stock_match or txn_match or stock_uom_match):
+        frappe.throw(
+            _(
+                "Qty/UOM mismatch for Batch Barcode {0} on {1}.\n"
+                "Document: {2} {3} (= {4} {5} after conversion).\n"
+                "Available on pack: {6} {7} / {8} {9}."
+            ).format(
+                barcode,
+                label,
+                flt(qty),
+                uom or stock_uom or "",
+                row_stock_qty,
+                tracker.stock_uom or "",
+                flt(tracker.transaction_qty),
+                tracker.transaction_uom or "",
+                available_stock,
+                tracker.stock_uom or "",
+            )
+        )
+
+    if not require_full_pack and row_stock_qty - available_stock > 0.00001:
+        frappe.throw(
+            _(
+                "Insufficient qty on Batch Barcode {0} for {1}.\n"
+                "Requested: {2} {3}. Available: {4} {5}."
+            ).format(
+                barcode,
+                label,
+                row_stock_qty,
+                tracker.stock_uom or "",
+                available_stock,
+                tracker.stock_uom or "",
+            )
+        )
+
+    return tracker
+
+
+@frappe.whitelist()
+def get_batch_barcode_pack_details(barcode):
+    """Client helper: return pack qty/uom details for auto-fill + checks."""
+    tracker = get_tracker_qty_snapshot(barcode)
+    if not tracker:
+        return None
+    return {
+        "name": tracker.name,
+        "barcode": tracker.barcode,
+        "item_code": tracker.item_code,
+        "sold": cint(tracker.sold),
+        "warehouse": tracker.warehouse,
+        "batch": tracker.lot_no if cint(tracker.is_lot) else tracker.batch,
+        "stock_qty": tracker.stock_qty,
+        "stock_uom": tracker.stock_uom,
+        "qty": tracker.stock_qty,
+        "uom": tracker.stock_uom,
+        "transaction_qty": tracker.transaction_qty,
+        "transaction_uom": tracker.transaction_uom,
+        "conversion_factor": tracker.conversion_factor,
+    }
 
 
 def create_barcode_tracker(
@@ -22,10 +281,19 @@ def create_barcode_tracker(
     reference_document_type=None,
     reference_document_name=None,
     transaction_type="Created",
+    transaction_qty=None,
+    transaction_uom=None,
+    conversion_factor=None,
+    stock_uom=None,
+    item_row=None,
 ):
     """
     Create a barcode tracker for the given item code, barcode, and batch.
-    Adds a transaction history entry. Use transaction_type="Purchased" for
+    Stores both Stock UOM qty (`qty`) and Transaction UOM qty so packs are
+    not misleading when transaction UOM differs from stock UOM.
+
+    Prefer passing `item_row` (Stock Entry Detail / PR Item) so UOM fields
+    are taken from the source document. Use transaction_type="Purchased" for
     Purchase Receipt, "Repacked" for Repack target, "Created" for Manufacture
     or Material Receipt, etc.
     """
@@ -34,12 +302,47 @@ def create_barcode_tracker(
     if frappe.db.exists("Batch Barcode Tracker", {"barcode": barcode}):
         frappe.throw("Barcode already exists.")
 
+    uom_fields = {}
+    if item_row is not None:
+        uom_fields = extract_uom_qty_from_item(item_row)
+    else:
+        resolved_stock_uom = stock_uom or frappe.db.get_value("Item", item_code, "stock_uom")
+        resolved_txn_uom = transaction_uom or resolved_stock_uom
+        resolved_cf = flt(conversion_factor) if conversion_factor is not None else 0
+        if resolved_cf <= 0:
+            resolved_cf = 1.0
+            if resolved_txn_uom and resolved_stock_uom and resolved_txn_uom != resolved_stock_uom:
+                cf = frappe.db.get_value(
+                    "UOM Conversion Detail",
+                    {"parent": item_code, "uom": resolved_txn_uom},
+                    "conversion_factor",
+                )
+                if cf:
+                    resolved_cf = flt(cf)
+
+        # Legacy callers pass `qty` as the document row qty (transaction UOM).
+        resolved_txn_qty = (
+            flt(transaction_qty) if transaction_qty is not None else flt(qty)
+        )
+        resolved_stock_qty = resolved_txn_qty * resolved_cf
+        uom_fields = {
+            "transaction_qty": resolved_txn_qty,
+            "transaction_uom": resolved_txn_uom,
+            "conversion_factor": resolved_cf,
+            "qty": resolved_stock_qty,
+            "uom": resolved_stock_uom,
+        }
+
     barcode_tracker = frappe.get_doc({
         "doctype": "Batch Barcode Tracker",
         "item_code": item_code,
         "barcode": barcode,
         "batch": batch,
-        "qty": qty,
+        "qty": uom_fields.get("qty"),
+        "uom": uom_fields.get("uom"),
+        "transaction_qty": uom_fields.get("transaction_qty"),
+        "transaction_uom": uom_fields.get("transaction_uom"),
+        "conversion_factor": uom_fields.get("conversion_factor") or 1,
         "barcode_image": image,
         "is_lot": is_lot,
         "lot_no": batch if is_lot else None,
@@ -306,6 +609,56 @@ def split_purchase_receipt_items():
     
     return pr_doc.name
 
+
+@frappe.whitelist()
+def split_subcontracting_receipt_items():
+    """Split items in Subcontracting Receipt based on custom_split_no"""
+    subcontracting_receipt = frappe.form_dict.get("subcontracting_receipt")
+    scr_doc = frappe.get_doc("Subcontracting Receipt", subcontracting_receipt)
+
+    items_to_process = [item for item in scr_doc.items]
+
+    for item in items_to_process:
+        split_no = item.custom_split_no or 1
+        if split_no > 1 and item.qty:
+            new_items = []
+            for i in range(split_no):
+                new_item = {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "description": item.description,
+                    "qty": item.qty,
+                    "received_qty": item.received_qty or item.qty,
+                    "stock_uom": item.stock_uom,
+                    "conversion_factor": item.conversion_factor or 1,
+                    "rate": item.rate,
+                    "amount": item.amount,
+                    "warehouse": item.warehouse,
+                    "rejected_warehouse": item.rejected_warehouse,
+                    "batch_no": item.batch_no,
+                    "serial_no": item.serial_no,
+                    "use_serial_batch_fields": item.use_serial_batch_fields,
+                    "bom": item.bom,
+                    "subcontracting_order": item.subcontracting_order,
+                    "subcontracting_order_item": item.subcontracting_order_item,
+                    "expense_account": item.expense_account,
+                    "cost_center": item.cost_center,
+                    "project": item.project,
+                    "schedule_date": item.schedule_date,
+                    "custom_split_no": 1,
+                }
+                new_items.append(new_item)
+
+            scr_doc.remove(item)
+            for new_item in new_items:
+                scr_doc.append("items", new_item)
+
+    scr_doc.save()
+    frappe.db.commit()
+
+    return scr_doc.name
+
+
 @frappe.whitelist()
 def split_stock_entry_items():
     """Split items in Purchase Receipt based on custom_split_no"""
@@ -496,6 +849,7 @@ def _candidate_barcodes_from_item_batch_qty(date_filters, params):
     """
     Unsold trackers that can be paired to a consume-only Stock Entry row by
     item, batch, and full quantity (transaction barcode may be wrong / missing).
+    Matches Stock Qty to transfer_qty and Transaction Qty to SED.qty.
     """
     rows = frappe.db.sql(
         """
@@ -505,7 +859,10 @@ def _candidate_barcodes_from_item_batch_qty(date_filters, params):
         INNER JOIN `tabBatch Barcode Tracker` bbt
             ON bbt.item_code = sed.item_code
             AND IFNULL(IF(bbt.is_lot = 1, bbt.lot_no, bbt.batch), '') = sed.batch_no
-            AND ABS(bbt.qty - sed.qty) < 0.00001
+            AND (
+                ABS(IFNULL(NULLIF(sed.transfer_qty, 0), sed.qty) - bbt.qty) < 0.00001
+                OR ABS(sed.qty - IFNULL(NULLIF(bbt.transaction_qty, 0), bbt.qty)) < 0.00001
+            )
             AND bbt.sold = 0
             AND bbt.docstatus = 1
             AND se.creation >= bbt.creation

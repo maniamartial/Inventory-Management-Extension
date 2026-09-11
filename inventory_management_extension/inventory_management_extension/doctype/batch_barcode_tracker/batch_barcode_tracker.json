@@ -9,17 +9,22 @@
   "section_break_o6es",
   "barcode",
   "item_code",
-  "qty",
   "sold",
   "barcode_image",
   "column_break_efor",
   "posting_date",
   "amended_from",
-  "uom",
   "batch",
   "warehouse",
   "is_lot",
   "lot_no",
+  "uom_section",
+  "transaction_uom",
+  "transaction_qty",
+  "conversion_factor",
+  "column_break_uom",
+  "uom",
+  "qty",
   "transaction_history_section",
   "transaction_history"
  ],
@@ -67,12 +72,6 @@
    "label": "Manufactured Date"
   },
   {
-   "fieldname": "qty",
-   "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Qty"
-  },
-  {
    "allow_on_submit": 1,
    "default": "0",
    "fieldname": "sold",
@@ -104,13 +103,6 @@
    "label": "Barcode Image"
   },
   {
-   "fetch_from": "item_code.stock_uom",
-   "fieldname": "uom",
-   "fieldtype": "Link",
-   "label": "UOM",
-   "options": "UOM"
-  },
-  {
    "allow_on_submit": 1,
    "default": "0",
    "fieldname": "is_lot",
@@ -123,6 +115,50 @@
    "fieldtype": "Link",
    "label": "Lot",
    "options": "Batch"
+  },
+  {
+   "fieldname": "uom_section",
+   "fieldtype": "Section Break",
+   "label": "Quantity / UOM"
+  },
+  {
+   "fieldname": "transaction_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Transaction Qty"
+  },
+  {
+   "fieldname": "transaction_uom",
+   "fieldtype": "Link",
+   "label": "Transaction UOM",
+   "options": "UOM"
+  },
+  {
+   "default": "1",
+   "description": "1 Transaction UOM = Conversion Factor \u00d7 Stock UOM",
+   "fieldname": "conversion_factor",
+   "fieldtype": "Float",
+   "label": "Conversion Factor",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_uom",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Quantity in Stock UOM (stock_qty)",
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Stock Qty"
+  },
+  {
+   "fetch_from": "item_code.stock_uom",
+   "fetch_if_empty": 1,
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM"
   },
   {
    "fieldname": "transaction_history_section",
@@ -141,7 +177,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-31 02:05:30.845981",
+ "modified": "2026-09-11 13:44:30.768585",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker",
@@ -165,7 +201,7 @@
   }
  ],
  "row_format": "Dynamic",
- "search_fields": "batch,qty",
+ "search_fields": "batch,qty,transaction_qty",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

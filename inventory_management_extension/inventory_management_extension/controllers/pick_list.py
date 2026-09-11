@@ -2,11 +2,15 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 from frappe.model.mapper import get_mapped_doc
+from inventory_management_extension.inventory_management_extension.utils import (
+    validate_batch_barcode_qty_uom,
+)
 
 
 
 def before_submit(doc, method=None):
     validate_qty(doc)
+    validate_custom_item_barcodes(doc)
     for item in doc.locations:
         missing_fields = []
 
@@ -59,7 +63,26 @@ def validate_qty(doc):
         
 def before_save(doc, method=None):
     validate_qty(doc)
+    validate_custom_item_barcodes(doc)
     calculate_package_weight(doc)
+
+
+def validate_custom_item_barcodes(doc):
+    """Ensure picked barcodes match pack qty/UOM (whole pack sell)."""
+    for row in doc.get("custom_items") or []:
+        if not row.barcode:
+            continue
+        validate_batch_barcode_qty_uom(
+            barcode=row.barcode,
+            item_code=row.item_code,
+            qty=row.qty,
+            uom=row.uom,
+            stock_uom=row.stock_uom,
+            conversion_factor=row.conversion_factor,
+            stock_qty=row.stock_qty,
+            context=f"Pick List pack {row.idx} ({row.item_code})",
+            require_full_pack=True,
+        )
     
 def calculate_package_weight(doc):
     # total_weight = 0
