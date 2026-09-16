@@ -245,9 +245,14 @@ doc_events = {
         "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.subcontracting_receipt.on_cancel",
     },
     "Delivery Note":{
+        "before_validate": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_validate",
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_submit",
         "before_insert": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.before_save",
         "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.delivery_note.on_cancel",
+    },
+    "Sales Invoice": {
+        "on_submit": "inventory_management_extension.inventory_management_extension.controllers.sales_invoice.before_submit",
+        "on_cancel": "inventory_management_extension.inventory_management_extension.controllers.sales_invoice.on_cancel",
     },
     "Pick List": {
         "on_submit": "inventory_management_extension.inventory_management_extension.controllers.pick_list.before_submit",

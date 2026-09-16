@@ -247,26 +247,178 @@ def validate_batch_barcode_qty_uom(
     return tracker
 
 
+def get_item_uom_conversions(item_code):
+    """Return {uom: conversion_factor} for an item (stock UOM maps to 1)."""
+    conversions = {}
+    if not item_code:
+        return conversions
+
+    stock_uom = frappe.db.get_value("Item", item_code, "stock_uom")
+    if stock_uom:
+        conversions[stock_uom] = 1.0
+
+    for row in frappe.get_all(
+        "UOM Conversion Detail",
+        filters={"parent": item_code},
+        fields=["uom", "conversion_factor"],
+    ):
+        if row.uom and flt(row.conversion_factor):
+            conversions[row.uom] = flt(row.conversion_factor)
+
+    return conversions
+
+
+def resolve_sales_order_item(item_code, sales_order=None, sales_order_item=None):
+    """
+    Return the Sales Order Item (the Sales Order child table) row used for an
+    item, preferring the exact child row name.
+
+    Used to keep Pick List / Delivery Note UOMs aligned with the UOM that was
+    actually ordered on the Sales Order.
+    """
+    fields = ["name", "parent", "item_code", "uom", "stock_uom", "conversion_factor"]
+
+    if sales_order_item:
+        so_item = frappe.db.get_value("Sales Order Item", sales_order_item, fields, as_dict=True)
+        if so_item and (not item_code or so_item.item_code == item_code):
+            return so_item
+
+    if not (sales_order and item_code):
+        return None
+
+    rows = frappe.get_all(
+        "Sales Order Item",
+        filters={"parent": sales_order, "item_code": item_code},
+        fields=fields,
+        order_by="idx asc",
+        limit_page_length=1,
+    )
+    return rows[0] if rows else None
+
+
+def resolve_pack_qty_for_uom(
+    uom,
+    stock_qty,
+    stock_uom,
+    transaction_uom=None,
+    transaction_qty=None,
+    conversion_factor=None,
+    uom_conversions=None,
+):
+    """
+    Resolve the qty to write on a document row when a pack is used with `uom`.
+
+    Returns a dict with the resolved `uom`, the `qty` in that UOM, the
+    `conversion_factor` (1 uom = cf x stock_uom) and the `stock_qty` in Stock UOM.
+
+    Falls back to the pack's transaction UOM / stock UOM when the requested UOM
+    has no conversion configured for the item.
+    """
+    stock_qty = flt(stock_qty)
+    transaction_qty = flt(transaction_qty)
+    conversion_factor = flt(conversion_factor) or 1.0
+    if not stock_qty and transaction_qty:
+        stock_qty = transaction_qty * conversion_factor
+
+    conversions = dict(uom_conversions or {})
+    if stock_uom:
+        conversions.setdefault(stock_uom, 1.0)
+    if transaction_uom:
+        conversions.setdefault(transaction_uom, conversion_factor)
+
+    resolved_uom = uom or transaction_uom or stock_uom
+    cf = flt(conversions.get(resolved_uom))
+    if not cf:
+        # UOM is not convertible for this item - fall back to a valid one.
+        resolved_uom = transaction_uom or stock_uom
+        cf = flt(conversions.get(resolved_uom)) or 1.0
+
+    return {
+        "uom": resolved_uom,
+        "qty": stock_qty / cf if cf else stock_qty,
+        "conversion_factor": cf,
+        "stock_qty": stock_qty,
+        "stock_uom": stock_uom,
+    }
+
+
 @frappe.whitelist()
-def get_batch_barcode_pack_details(barcode):
-    """Client helper: return pack qty/uom details for auto-fill + checks."""
+def get_batch_barcode_pack_details(barcode, sales_order=None, uom=None):
+    """
+    Client helper: return pack qty/uom details for auto-fill + checks.
+
+    - `sales_order`: when passed, the Sales Order Item (child table) UOM is
+      returned so Pick List rows default to the ordered / transaction UOM.
+    - `uom`: when passed, the qty is resolved for that UOM. When neither is
+      passed the default UOM is used (Sales Order UOM, else the pack's
+      transaction UOM, else the Stock UOM).
+    """
     tracker = get_tracker_qty_snapshot(barcode)
     if not tracker:
         return None
+
+    item_code = tracker.item_code
+    stock_uom = tracker.stock_uom or frappe.db.get_value("Item", item_code, "stock_uom")
+    conversion_factor = flt(tracker.conversion_factor) or 1.0
+    stock_qty = flt(tracker.stock_qty)
+    transaction_uom = tracker.transaction_uom or stock_uom
+    transaction_qty = flt(tracker.transaction_qty)
+    if not transaction_qty and stock_qty:
+        transaction_qty = stock_qty / conversion_factor if conversion_factor else stock_qty
+    if not stock_qty and transaction_qty:
+        stock_qty = transaction_qty * conversion_factor
+
+    uom_conversions = get_item_uom_conversions(item_code)
+    if stock_uom:
+        uom_conversions.setdefault(stock_uom, 1.0)
+    if transaction_uom:
+        uom_conversions.setdefault(transaction_uom, conversion_factor)
+
+    so_item = resolve_sales_order_item(item_code, sales_order)
+    so_uom = so_item.get("uom") if so_item else None
+    so_stock_uom = (so_item.get("stock_uom") if so_item else None) or stock_uom
+    so_conversion_factor = flt(so_item.get("conversion_factor")) if so_item else 0
+    if so_uom and not so_conversion_factor:
+        so_conversion_factor = get_uom_conversion_factor(item_code, so_uom, so_stock_uom)
+    if so_uom:
+        uom_conversions.setdefault(so_uom, so_conversion_factor or 1.0)
+
+    selected = resolve_pack_qty_for_uom(
+        uom or so_uom or transaction_uom or stock_uom,
+        stock_qty,
+        stock_uom,
+        transaction_uom=transaction_uom,
+        transaction_qty=transaction_qty,
+        conversion_factor=conversion_factor,
+        uom_conversions=uom_conversions,
+    )
+
     return {
         "name": tracker.name,
         "barcode": tracker.barcode,
-        "item_code": tracker.item_code,
+        "item_code": item_code,
         "sold": cint(tracker.sold),
         "warehouse": tracker.warehouse,
         "batch": tracker.lot_no if cint(tracker.is_lot) else tracker.batch,
-        "stock_qty": tracker.stock_qty,
-        "stock_uom": tracker.stock_uom,
-        "qty": tracker.stock_qty,
-        "uom": tracker.stock_uom,
-        "transaction_qty": tracker.transaction_qty,
-        "transaction_uom": tracker.transaction_uom,
-        "conversion_factor": tracker.conversion_factor,
+        # Pack quantities exactly as recorded on the tracker
+        "stock_qty": stock_qty,
+        "stock_uom": stock_uom,
+        "qty": stock_qty,
+        "uom": stock_uom,
+        "transaction_qty": transaction_qty,
+        "transaction_uom": transaction_uom,
+        "conversion_factor": conversion_factor,
+        # Sales Order Item (child table) UOM, when the pick list is linked to SO
+        "sales_order": so_item.get("parent") if so_item else None,
+        "sales_order_item": so_item.get("name") if so_item else None,
+        "so_uom": so_uom,
+        "so_conversion_factor": so_conversion_factor,
+        "uom_conversions": uom_conversions,
+        # Qty resolved for the requested / default UOM
+        "selected_uom": selected["uom"],
+        "selected_qty": selected["qty"],
+        "selected_stock_qty": selected["stock_qty"],
+        "selected_conversion_factor": selected["conversion_factor"],
     }
 
 
@@ -472,6 +624,42 @@ def unmark_barcode_as_sold(
     )
 
 
+def _barcode_held_by_another_submitted_doc(barcode_name, current_doc):
+    """
+    True when another *submitted* document still consumes this pack.
+
+    Cancelling the Delivery Note of an invoice (or the invoice of a Delivery
+    Note) must not reopen a pack that the other live document still holds.
+    Transactions referencing the document being cancelled are ignored, and
+    references to documents that no longer exist / are cancelled do not hold it.
+    """
+    rows = frappe.get_all(
+        "Batch Barcode Tracker Transaction",
+        filters={
+            "parent": barcode_name,
+            "parenttype": "Batch Barcode Tracker",
+            "transaction_type": ["in", ("Sold", "Issue", "Consumption")],
+        },
+        fields=["reference_document_type", "reference_document_name"],
+    )
+
+    for row in rows:
+        ref_dt = row.get("reference_document_type")
+        ref_dn = row.get("reference_document_name")
+        if not (ref_dt and ref_dn):
+            continue
+        if ref_dt == current_doc.doctype and ref_dn == current_doc.name:
+            continue
+        try:
+            if cint(frappe.db.get_value(ref_dt, ref_dn, "docstatus")) == 1:
+                return True
+        except Exception:
+            # Reference doctype/record no longer available - cannot hold it.
+            continue
+
+    return False
+
+
 def reverse_barcode_transactions_for_doc(doc):
     """
     Reverse barcode effects for a cancelled document.
@@ -519,8 +707,13 @@ def reverse_barcode_transactions_for_doc(doc):
         fields=["parent", "warehouse"],
     )
     for row in consumed_parents:
+        barcode_name = row["parent"]
+        if _barcode_held_by_another_submitted_doc(barcode_name, doc):
+            # Another live document still consumes this pack (e.g. the Delivery
+            # Note behind this invoice) - keep it sold.
+            continue
         unmark_barcode_as_sold(
-            row["parent"], doc.doctype, doc.name, warehouse=row.get("warehouse")
+            barcode_name, doc.doctype, doc.name, warehouse=row.get("warehouse")
         )
 
     # Created by this document: mark as sold (block)
@@ -775,7 +968,9 @@ def get_pick_list(doc):
 
 def add_packing_weights_to_delivery_note(doc):
     for item in doc.items:
-        pick_list_item = frappe.get_doc("Pick List Item",item.pick_list_item)
+        if not item.get("pick_list_item"):
+            continue
+        pick_list_item = frappe.get_doc("Pick List Item", item.pick_list_item)
         if pick_list_item:
             item.custom_cubic = pick_list_item.custom_cubic
             item.custom_packaging_itemuom = pick_list_item.custom_packaging_itemuom

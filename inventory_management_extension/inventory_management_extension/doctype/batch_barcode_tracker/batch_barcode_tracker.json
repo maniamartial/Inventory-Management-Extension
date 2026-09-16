@@ -125,11 +125,14 @@
    "fieldname": "transaction_qty",
    "fieldtype": "Float",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Transaction Qty"
   },
   {
    "fieldname": "transaction_uom",
    "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Transaction UOM",
    "options": "UOM"
   },
@@ -150,6 +153,7 @@
    "fieldname": "qty",
    "fieldtype": "Float",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Stock Qty"
   },
   {
@@ -157,6 +161,8 @@
    "fetch_if_empty": 1,
    "fieldname": "uom",
    "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Stock UOM",
    "options": "UOM"
   },
@@ -177,7 +183,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-11 13:44:30.768585",
+ "modified": "2026-09-17 02:50:24.127696",
  "modified_by": "Administrator",
  "module": "Inventory Management Extension",
  "name": "Batch Barcode Tracker",

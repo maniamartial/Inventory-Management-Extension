@@ -31,6 +31,7 @@
   "column_break_belw",
   "batch_no",
   "barcode",
+  "transaction_id",
   "weight_section",
   "packaging_item",
   "package_weight",
@@ -251,6 +252,13 @@
    "in_list_view": 1,
    "label": "Barcode",
    "options": "Batch Barcode Tracker"
+  },
+  {
+   "description": "Reference id of the transaction the split came from (set by \"Fetch Items From Order\")",
+   "fieldname": "transaction_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Transaction ID"
   },
   {
    "fieldname": "weight_section",
