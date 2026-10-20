@@ -96,11 +96,18 @@ def sync_item_uom_with_sales_order(doc):
 def before_submit(doc, method=None):
     update_batch_tracker(doc)
 
+def is_fetch_customer_enabled():
+    """Inventory Settings flag: pull the Customer of the Pick List into the Delivery Note."""
+    return bool(
+        frappe.db.get_single_value("Inventory Settings", "fetch_customer_on_delivery_note")
+    )
+
 def update_customer(doc):
     pick_list_doc = get_pick_list(doc)
-    doc.customer = pick_list_doc.customer if pick_list_doc else None
+    if is_fetch_customer_enabled() and pick_list_doc and pick_list_doc.customer:
+        doc.customer = pick_list_doc.customer
     doc.taxes_and_charges = get_taxes_charges(doc)
-    
+
 def get_taxes_charges(doc):
     taxes_charges = frappe.get_all("Sales Taxes and Charges Template", filters={"is_default":1})
     if taxes_charges:
@@ -113,7 +120,7 @@ def before_save(doc, method=None):
         add_packing_weights_to_delivery_note(doc)
     else:
         pick_list_doc = get_pick_list(doc)
-        if pick_list_doc:
+        if is_fetch_customer_enabled() and pick_list_doc and pick_list_doc.customer:
             doc.customer = pick_list_doc.customer
 
 
