@@ -947,7 +947,11 @@ def get_conversion_factor():
     
     
 def get_pick_list(doc):
-    pick_list_item = next((item.pick_list_item for item in doc.items if item.pick_list_item), None)
+    # .get(): Sales Invoice Item does not always have pick_list_item (Delivery Note Item does).
+    pick_list_item = next(
+        (item.get("pick_list_item") for item in doc.items if item.get("pick_list_item")),
+        None,
+    )
     
     if not pick_list_item:
         return
