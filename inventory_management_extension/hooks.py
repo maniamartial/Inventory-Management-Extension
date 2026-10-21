@@ -6,7 +6,7 @@ app_email = "jomondi@nei-ltd.com"
 app_license = "agpl-3.0"
 
 # Apps
-# ------------------
+# -----------------
 
 # required_apps = []
 
