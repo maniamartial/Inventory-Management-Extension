@@ -1,5 +1,7 @@
 import frappe
-from frappe.utils import flt
+from frappe import _
+from frappe.model.naming import getseries
+from frappe.utils import cint, flt, now_datetime
 import random
 import barcode
 from barcode.writer import ImageWriter
@@ -10,6 +12,8 @@ from inventory_management_extension.inventory_management_extension.utils import 
     update_barcode_warehouse_and_add_transfer,
     validate_batch_barcode_qty_uom,
 )
+
+BATCH_SERIES_MAX_ATTEMPTS = 50
 
 def calculate_ean13_check_digit(ean12):
     """
@@ -502,116 +506,167 @@ def _tick_missing_barcodes_issued(ste_doc):
 	doc.save(ignore_permissions=True)
 
 
+def _year_batch_prefix():
+	"""Two-digit year prefix used by custom batch IDs, e.g. ``26-``."""
+	return now_datetime().strftime("%y") + "-"
+
+
+def _batch_series_key(year_prefix):
+	"""Locked ``tabSeries`` key for year-prefixed batch allocation."""
+	return f"inventory-batch-{year_prefix}"
+
+
+def _max_year_batch_series(year_prefix):
+	"""Highest numeric suffix among ``YY-<digits>`` batches for the year."""
+	row = frappe.db.sql(
+		"""
+		SELECT MAX(CAST(SUBSTRING_INDEX(name, '-', -1) AS UNSIGNED))
+		FROM `tabBatch`
+		WHERE name LIKE %s
+			AND name REGEXP %s
+		""",
+		(f"{year_prefix}%", f"^{year_prefix}[0-9]+$"),
+	)
+	return cint(row[0][0]) if row and row[0][0] is not None else 0
+
+
+def _ensure_batch_series_at_least(series_key, minimum):
+	"""
+	Seed / bump ``tabSeries`` so the next ``getseries`` call is above every
+	existing batch. Uses ``FOR UPDATE`` so concurrent allocators serialize.
+	"""
+	minimum = cint(minimum)
+	current = frappe.db.sql(
+		"SELECT `current` FROM `tabSeries` WHERE name=%s FOR UPDATE",
+		(series_key,),
+	)
+	if current and current[0][0] is not None:
+		if cint(current[0][0]) < minimum:
+			frappe.db.sql(
+				"UPDATE `tabSeries` SET `current`=%s WHERE name=%s",
+				(minimum, series_key),
+			)
+	else:
+		frappe.db.sql(
+			"INSERT INTO `tabSeries` (name, `current`) VALUES (%s, %s)",
+			(series_key, minimum),
+		)
+
+
 def latest_batch(batch_prefix):
-    latest_batch = frappe.db.sql(
-        """SELECT batch_id FROM `tabBatch`
-        WHERE batch_id LIKE %s
-        ORDER BY creation DESC LIMIT 1""",
-        (batch_prefix + "%",), as_dict=True
-    )
+	"""Next batch id after the highest numeric ``batch_prefix#####`` batch."""
+	next_series = _max_year_batch_series(batch_prefix) + 1
+	for _ in range(BATCH_SERIES_MAX_ATTEMPTS):
+		batch_no = f"{batch_prefix}{next_series:05d}"
+		if not frappe.db.exists("Batch", batch_no):
+			return batch_no
+		next_series += 1
 
-    if latest_batch:
-        last_number = int(latest_batch[0].batch_id.split("-")[-1])
-        new_number = f"{last_number + 1:05}"
-    else:
-        new_number = "0001"
+	frappe.throw(_("Could not allocate a unique batch number. Please try again."))
 
-    new_batch_no = f"{batch_prefix}{new_number}"
-    return new_batch_no
 
 def create_batch(batch_no, item_code):
-    batch = frappe.new_doc("Batch")
-    batch.batch_id = batch_no
-    batch.item = item_code
-    batch.insert()
-    return batch
+	batch = frappe.new_doc("Batch")
+	batch.batch_id = batch_no
+	batch.item = item_code
+	batch.insert()
+	return batch
 
 
 def generate_year_prefixed_batch():
-    """
-    Generate batch number with year prefix in format [YY]-Series
-    Example: 24-00001, 24-00002, 25-00001
-    """
-    from datetime import datetime
-    
-    # Get current year as 2-digit string
-    current_year = datetime.now().strftime("%y")
-    year_prefix = f"{current_year}-"
-    
-    # Find the latest batch for current year
-    latest_batch = frappe.db.sql(
-        """SELECT batch_id FROM `tabBatch`
-        WHERE batch_id LIKE %s
-        ORDER BY creation DESC LIMIT 1""",
-        (year_prefix + "%",), as_dict=True
-    )
-    
-    if latest_batch:
-        # Extract the series number from the latest batch
-        try:
-            series_part = latest_batch[0].batch_id.split("-")[-1]
-            next_series = int(series_part) + 1
-        except (ValueError, IndexError):
-            # If parsing fails, start from 1
-            next_series = 1
-    else:
-        # No batch exists for current year, start from 1
-        next_series = 1
-    
-    # Format series as 5-digit number with leading zeros
-    series_formatted = f"{next_series:05d}"
-    
-    # Combine year prefix with series
-    new_batch_id = f"{year_prefix}{series_formatted}"
-    
-    return new_batch_id
+	"""
+	Generate batch number with year prefix in format [YY]-Series.
+
+	Example: 24-00001, 24-00002, 25-00001
+
+	Uses the max existing numeric series for the year (not creation order),
+	advances a locked ``tabSeries`` counter, and skips any id that already exists.
+	"""
+	year_prefix = _year_batch_prefix()
+	series_key = _batch_series_key(year_prefix)
+	_ensure_batch_series_at_least(series_key, _max_year_batch_series(year_prefix))
+
+	for _ in range(BATCH_SERIES_MAX_ATTEMPTS):
+		series = getseries(series_key, 5)
+		batch_id = f"{year_prefix}{series}"
+		if not frappe.db.exists("Batch", batch_id):
+			return batch_id
+
+	frappe.throw(_("Could not allocate a unique batch number. Please try again."))
+
 
 def generate_code128():
-    """
-    Generate a valid random Code 128 barcode as a string and save it as an image.
-    """
-    random_number = ''.join(str(random.randint(0, 9)) for _ in range(12))
-    
-    code128 = barcode.get_barcode_class('code128')
-    
-    barcode_instance = code128(random_number, writer=ImageWriter())
-    
-    filename = barcode_instance.save('code128_barcode')
-    
-    return random_number, filename
+	"""
+	Generate a valid random Code 128 barcode as a string and save it as an image.
+	"""
+	random_number = "".join(str(random.randint(0, 9)) for _ in range(12))
+
+	code128 = barcode.get_barcode_class("code128")
+
+	barcode_instance = code128(random_number, writer=ImageWriter())
+
+	filename = barcode_instance.save("code128_barcode")
+
+	return random_number, filename
+
+
+def _insert_year_prefixed_batch(item):
+	"""Create the next free year-prefixed Batch, retrying on duplicate name races."""
+	last_error = None
+	for _ in range(BATCH_SERIES_MAX_ATTEMPTS):
+		new_batch_id = generate_year_prefixed_batch()
+		batch = frappe.get_doc(
+			{
+				"doctype": "Batch",
+				"batch_id": new_batch_id,
+				"item": item.item_code,
+				"expiry_date": item.get("expiry_date"),
+			}
+		)
+		try:
+			batch.insert(ignore_permissions=True)
+			return new_batch_id
+		except frappe.DuplicateEntryError as e:
+			last_error = e
+			continue
+		except Exception as e:
+			if frappe.db.is_duplicate_entry(e):
+				last_error = e
+				continue
+			raise
+
+	frappe.throw(
+		_("Could not create a unique Batch after multiple attempts. Please try again.")
+	)
+	raise last_error
+
 
 def generate_batch_no(doc):
-    item_batch_map = {}
-    
-    for item in doc.items:
-        if frappe.get_doc("Item", item.item_code).has_batch_no == 1:
-            if item.batch_no: 
-                continue
-            item.use_serial_batch_fields = 1
-            if doc.doctype=="Stock Entry" and doc.stock_entry_type == "Manufacture" and not item.is_finished_item:
-                continue
-            
-            if item.item_code in item_batch_map:
-                item.batch_no = item_batch_map[item.item_code]
-                continue
-            
-            # Generate batch with year prefix [YY]-Series format
-            new_batch_id = generate_year_prefixed_batch()
-        
-            batch = frappe.get_doc({
-                "doctype": "Batch",
-                "batch_id": new_batch_id,
-                "item": item.item_code,
-                "expiry_date": item.get("expiry_date")
-            })
-            batch.insert(ignore_permissions=True)
-        
-            item.batch_no = new_batch_id
-            item_batch_map[item.item_code] = new_batch_id
-            
-            
+	item_batch_map = {}
+
+	for item in doc.items:
+		if frappe.get_doc("Item", item.item_code).has_batch_no == 1:
+			if item.batch_no:
+				continue
+			item.use_serial_batch_fields = 1
+			if (
+				doc.doctype == "Stock Entry"
+				and doc.stock_entry_type == "Manufacture"
+				and not item.is_finished_item
+			):
+				continue
+
+			if item.item_code in item_batch_map:
+				item.batch_no = item_batch_map[item.item_code]
+				continue
+
+			new_batch_id = _insert_year_prefixed_batch(item)
+			item.batch_no = new_batch_id
+			item_batch_map[item.item_code] = new_batch_id
+
+
 def valiadte_item_has_batch(item_code):
-    item_doc = frappe.get_doc("Item", item_code)
-    if item_doc.has_batch_no == 1:
-        return True
-    return False
+	item_doc = frappe.get_doc("Item", item_code)
+	if item_doc.has_batch_no == 1:
+		return True
+	return False
